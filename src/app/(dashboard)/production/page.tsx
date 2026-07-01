@@ -1,38 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
-import ProductionImprimerieClient from './ProductionImprimerieClient'
-
+import ProductionClient from './ProductionClient'
 export const metadata = { title: 'Production — Carnaval Imprim CRM' }
-
 export default async function ProductionPage() {
   const supabase = await createClient()
-
-  const [
-    { data: bons },
-    { data: clients },
-    { data: machines },
-    { data: profiles },
-    { data: factures },
-  ] = await Promise.all([
-    supabase.from('bons_travail').select(`
-      *, clients(nom),
-      operateur:profiles!operateur_id(nom),
-      machines(nom, type),
-      etapes_fabrication(*),
-      controles_qualite(*)
-    `).order('created_at', { ascending: false }),
+  const [{ data: productions }, { data: clients }, { data: types }, { data: profiles }] = await Promise.all([
+    supabase.from('productions').select('*, clients(nom), types_impression(libelle), profiles(nom)').order('date', { ascending: false }),
     supabase.from('clients').select('id, nom').order('nom'),
-    supabase.from('machines').select('*').order('nom'),
-    supabase.from('profiles').select('id, nom, role').eq('actif', true).order('nom'),
-    supabase.from('factures').select('id, numero').order('created_at', { ascending: false }).limit(50),
+    supabase.from('types_impression').select('*').order('libelle'),
+    supabase.from('profiles').select('id, nom').eq('actif', true),
   ])
-
-  return (
-    <ProductionImprimerieClient
-      bons={bons || []}
-      clients={clients || []}
-      machines={machines || []}
-      profiles={profiles || []}
-      factures={factures || []}
-    />
-  )
+  return <ProductionClient productions={productions || []} clients={clients || []} types={types || []} profiles={profiles || []} />
 }

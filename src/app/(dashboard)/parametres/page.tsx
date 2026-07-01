@@ -8,5 +8,5 @@ export default async function ParametresPage() {
     supabase.from('fne_config').select('*').single(),
     supabase.from('profiles').select('*').order('nom'),
   ])
-  return <ParametresClient entreprise={entreprise} fneConfig={fneConfig} profiles={profiles||[]} />
+  return <ParametresClient entreprise={entreprise} fneConfig={fneConfig} profiles={profiles || []} />
 }

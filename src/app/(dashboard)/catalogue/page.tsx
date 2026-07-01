@@ -7,5 +7,5 @@ export default async function CataloguePage() {
     supabase.from('produits').select('*, types_impression(libelle)').order('nom'),
     supabase.from('types_impression').select('*').order('libelle'),
   ])
-  return <CatalogueClient produits={produits||[]} types={types||[]} />
+  return <CatalogueClient produits={produits || []} types={types || []} />
 }

@@ -1,29 +1,16 @@
 # Carnaval Imprim — CRM
 
-Application de gestion sur mesure pour **Carnaval Imprim**, Cocody-Blockhauss, Abidjan CI.
+Application de gestion sur mesure pour Carnaval Imprim, Abidjan CI.
 
-## Stack technique
+## Stack
 
 - **Next.js 15** (App Router) + **TypeScript**
 - **Supabase** (PostgreSQL + Auth + RLS)
 - **Tailwind CSS 4**
-- **Vercel** (déploiement CI/CD)
+- **Vercel** (déploiement)
 - **FNE / DGI CI** (Facture Normalisée Électronique)
 
-## Modules
-
-| Module | Description |
-|--------|-------------|
-| 📊 Tableau de bord | KPIs, graphiques, alertes |
-| 👥 Clients | Base clients avec NCC et template FNE |
-| 📄 Devis | Création, envoi, conversion en facture |
-| 🧾 Factures | Facturation + paiements + certification FNE/DGI |
-| 🖨️ Production | Bons de travail imprimerie complets |
-| 📦 Catalogue | 35 articles par catégorie |
-| 🚚 Fournisseurs | Base fournisseurs |
-| ⚙️ Paramètres | Entreprise + FNE + utilisateurs |
-
-## Démarrage
+## Démarrage rapide
 
 ```bash
 npm install
@@ -32,35 +19,21 @@ cp .env.example .env.local
 npm run dev
 ```
 
-## Base de données Supabase
+## Base de données
 
-Exécuter dans l'ordre dans Supabase SQL Editor :
-
-1. `supabase/migrations/00001_init_schema.sql`
-2. `supabase/migrations/00002_module_imprimerie.sql`
+Exécuter dans Supabase SQL Editor :
+```
+supabase/migrations/00001_init_schema.sql
+```
 
 Générer les types TypeScript :
 ```bash
-npx supabase gen types typescript --project-id VOTRE_PROJECT_ID --schema public > src/types/database.types.ts
+npm run db:types
 ```
 
-## Variables d'environnement Vercel
+## Déploiement
 
-| Variable | Description |
-|----------|-------------|
-| `NEXT_PUBLIC_SUPABASE_URL` | URL du projet Supabase |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clé publique Supabase |
-| `SUPABASE_SERVICE_ROLE_KEY` | Clé service (serveur uniquement) |
-| `FNE_API_KEY` | Clé API DGI FNE |
-| `FNE_URL_TEST` | URL test FNE |
-| `FNE_URL_PROD` | URL production FNE |
-
-## Anti-pause Supabase Free
-
-Configurer un cron sur [cron-job.org](https://cron-job.org) :
-- URL : `https://carnaval-imprim-crm.vercel.app/api/ping`
-- Fréquence : toutes les 5 jours
+Push sur `main` → Vercel redéploie automatiquement.
 
 ---
 Développé par **MonWe Infinity LLC** · FA-2026-002
-SARL Carnaval Imprim · NCC 240220333S · Cocody-Blockhauss, Abidjan
