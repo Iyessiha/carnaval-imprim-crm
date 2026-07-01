@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import CatalogueClient from './CatalogueClient'
+
 export const metadata = { title: 'Catalogue — Carnaval Imprim CRM' }
+
 export default async function CataloguePage() {
   const supabase = await createClient()
   const [{ data: produits }, { data: types }] = await Promise.all([
