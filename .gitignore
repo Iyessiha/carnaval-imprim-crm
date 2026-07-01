@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+supabase/.branches
+supabase/.temp
+.DS_Store
+*.log
+.idea/
+.vscode/
+*.tsbuildinfo
+next-env.d.ts
