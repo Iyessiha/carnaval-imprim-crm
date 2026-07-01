@@ -7,17 +7,16 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit",
-    "db:types": "supabase gen types typescript --project-id $SUPABASE_PROJECT_ID --schema public > src/types/database.types.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "next": "15.3.3",
+    "next": "15.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "@supabase/supabase-js": "^2.49.4",
     "@supabase/ssr": "^0.6.1",
     "lucide-react": "^0.511.0",
-    "recharts": "^2.15.3",
+    "recharts": "^3.0.0",
     "clsx": "^2.1.1",
     "tailwind-merge": "^3.3.0",
     "react-hook-form": "^7.56.4",
@@ -32,7 +31,6 @@
     "@types/react-dom": "^19",
     "tailwindcss": "^4",
     "eslint": "^9",
-    "eslint-config-next": "15.3.3",
-    "supabase": "^2.22.6"
+    "eslint-config-next": "15.3.4"
   }
 }
