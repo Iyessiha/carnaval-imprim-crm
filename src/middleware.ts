@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -23,16 +23,18 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Rediriger vers login si non connecté (sauf routes publiques)
-  const isPublic = request.nextUrl.pathname.startsWith('/login') ||
-                   request.nextUrl.pathname.startsWith('/api/ping')
+  const { pathname } = request.nextUrl
 
-  if (!user && !isPublic) {
-    return NextResponse.redirect(new URL('/login', request.url))
+  // Pages publiques
+  if (pathname.startsWith('/login') || pathname.startsWith('/api/')) {
+    return supabaseResponse
   }
 
-  if (user && request.nextUrl.pathname === '/login') {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
+  // Rediriger vers login si non authentifié
+  if (!user && !pathname.startsWith('/login')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
   }
 
   return supabaseResponse
