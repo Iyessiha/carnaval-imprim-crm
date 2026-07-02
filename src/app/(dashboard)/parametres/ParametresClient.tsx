@@ -71,7 +71,7 @@ export default function ParametresClient({ entreprise: initial, fneConfig: initi
   const [ent, setEnt] = useState<Record<string,string>>({
     nom:               String(initial?.nom || 'CARNAVAL IMPRIM'),
     forme:             String(initial?.forme || 'SARL'),
-    capital:           String(initial?.capital || '1000000'),
+    capital:           String((initial as Record<string,unknown>)?.capital || '1000000'),
     siege:             String(initial?.siege || 'Cocody - Blockhauss, Abidjan'),
     tel:               String(initial?.tel || '07 19 14 13 13 / 07 58 26 53 12'),
     email:             String(initial?.email || ''),
@@ -109,7 +109,7 @@ export default function ParametresClient({ entreprise: initial, fneConfig: initi
       taux_tva: parseFloat(ent.taux_tva)||18,
       fne_point_of_sale: ent.fne_point_of_sale,
       fne_establishment: ent.fne_establishment,
-    }).eq('ncc', ent.ncc)
+    }).eq('id', String(initial?.id || ''))
     setSaving(false)
     if (e) { setError(e.message); return }
     setSaved('✅ Entreprise sauvegardée'); setTimeout(() => setSaved(''), 3000)
@@ -123,7 +123,7 @@ export default function ParametresClient({ entreprise: initial, fneConfig: initi
       url_prod: fne.url_prod || null,
       mode: fne.mode,
       actif: !!(fne.api_key),
-    }).eq('mode', initialFne?.mode || 'test')
+    }).gte('created_at', '2000-01-01')
     setSaving(false)
     if (e) { setError(e.message); return }
     setSaved('✅ Configuration FNE sauvegardée'); setTimeout(() => setSaved(''), 3000)
