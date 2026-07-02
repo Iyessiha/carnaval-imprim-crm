@@ -5,27 +5,30 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, FileText, Receipt, Printer,
   Package, Truck, Settings, LogOut, BarChart3,
-  AlertCircle, ShoppingCart, Calculator, Banknote
+  AlertCircle, ShoppingCart, Calculator, Banknote,
+  PackageCheck, Wallet
 } from 'lucide-react'
 
 const nav = [
   { href: '/dashboard',     label: 'Tableau de bord', icon: LayoutDashboard },
   { divider: 'Commercial' },
-  { href: '/clients',       label: 'Clients',          icon: Users },
-  { href: '/devis',         label: 'Devis',             icon: FileText },
-  { href: '/factures',      label: 'Factures',          icon: Receipt },
-  { href: '/relances',      label: 'Relances',          icon: AlertCircle },
+  { href: '/clients',       label: 'Clients',           icon: Users },
+  { href: '/devis',         label: 'Devis',              icon: FileText },
+  { href: '/factures',      label: 'Factures',           icon: Receipt },
+  { href: '/relances',      label: 'Relances',           icon: AlertCircle },
   { divider: 'Opérations' },
-  { href: '/production',    label: 'Production',        icon: Printer },
-  { href: '/bons',          label: 'Bons commande',     icon: ShoppingCart },
+  { href: '/production',    label: 'Production',         icon: Printer },
+  { href: '/livraisons',    label: 'Bons livraison',     icon: PackageCheck },
+  { href: '/bons',          label: 'Bons commande',      icon: ShoppingCart },
   { divider: 'Référentiel' },
-  { href: '/catalogue',     label: 'Catalogue',         icon: Package },
-  { href: '/fournisseurs',  label: 'Fournisseurs',      icon: Truck },
+  { href: '/catalogue',     label: 'Catalogue',          icon: Package },
+  { href: '/fournisseurs',  label: 'Fournisseurs',       icon: Truck },
   { divider: 'Gestion' },
-  { href: '/comptabilite',  label: 'Comptabilité',      icon: Calculator },
-  { href: '/caisse',        label: 'Caisse',            icon: Banknote },
-  { href: '/stats',         label: 'Statistiques',      icon: BarChart3 },
-  { href: '/parametres',    label: 'Paramètres',        icon: Settings },
+  { href: '/comptabilite',  label: 'Comptabilité',       icon: Calculator },
+  { href: '/caisse',        label: 'Caisse',             icon: Banknote },
+  { href: '/bons-caisse',   label: 'Bons de caisse',     icon: Wallet },
+  { href: '/stats',         label: 'Statistiques',       icon: BarChart3 },
+  { href: '/parametres',    label: 'Paramètres',         icon: Settings },
 ]
 
 export default function Sidebar() {
@@ -42,12 +45,12 @@ export default function Sidebar() {
     <aside style={{
       width: 220, background: '#fff', borderRight: '1px solid #E4DDD6',
       position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 30,
-      display: 'flex', flexDirection: 'column', padding: '12px 10px',
+      display: 'flex', flexDirection: 'column', padding: '10px 10px',
       overflowY: 'auto'
     }}>
-      {/* Logo vrai */}
-      <div style={{ padding: '4px 4px 12px', borderBottom: '1px solid #F0EEEC', marginBottom: 8 }}>
-        <Link href="/" style={{ display: 'block' }}>
+      {/* Logo réel */}
+      <div style={{ padding: '2px 4px 10px', borderBottom: '1px solid #F0EEEC', marginBottom: 6 }}>
+        <Link href="/">
           <Image
             src="/logo.png"
             alt="Carnaval Imprim"
@@ -66,7 +69,7 @@ export default function Sidebar() {
             <div key={idx} style={{
               fontSize: 9, fontWeight: 800, color: '#C2117A',
               textTransform: 'uppercase', letterSpacing: '1.5px',
-              padding: '9px 8px 3px', marginTop: 2
+              padding: '8px 8px 2px', marginTop: 2
             }}>
               {item.divider}
             </div>
@@ -76,7 +79,7 @@ export default function Sidebar() {
             <Link key={item.href} href={item.href!} style={{
               display: 'flex', alignItems: 'center', gap: 9,
               padding: '8px 10px', borderRadius: 9, textDecoration: 'none',
-              fontSize: 13, fontWeight: 600,
+              fontSize: 12, fontWeight: 600,
               color: active ? '#fff' : '#1B1A1C',
               background: active ? '#C2117A' : 'transparent',
             }}>
@@ -88,14 +91,14 @@ export default function Sidebar() {
       </nav>
 
       {/* Déconnexion */}
-      <div style={{ paddingTop: 10, borderTop: '1px solid #E4DDD6', marginTop: 8 }}>
+      <div style={{ paddingTop: 8, borderTop: '1px solid #E4DDD6', marginTop: 6 }}>
         <button onClick={handleLogout} style={{
           display: 'flex', alignItems: 'center', gap: 9,
           padding: '8px 10px', borderRadius: 9, width: '100%',
-          border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+          border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
           color: '#7A736C', background: 'transparent', fontFamily: 'inherit'
         }}>
-          <LogOut size={15} /> Déconnexion
+          <LogOut size={14} /> Déconnexion
         </button>
         <div style={{ fontSize: 9, color: '#B0A89F', padding: '4px 8px 0', lineHeight: 1.5 }}>
           NCC : 240220333S
