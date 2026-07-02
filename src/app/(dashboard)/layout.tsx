@@ -1,5 +1,4 @@
 export const dynamic = 'force-dynamic'
-
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Sidebar from '@/components/shared/Sidebar'
@@ -10,9 +9,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!user) redirect('/login')
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#F6F4F1' }}>
+    <div className="dashboard-wrap">
       <Sidebar />
-      <main style={{ flex: 1, marginLeft: 220, minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <main className="dashboard-main">
         {children}
       </main>
     </div>
