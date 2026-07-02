@@ -3,24 +3,25 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Laisser passer sans vérification
+  // Pages publiques — jamais de redirection
   if (
+    pathname === '/'           ||   // landing page
+    pathname === '/login'      ||   // page de connexion
+    pathname.startsWith('/api/') || // API routes
     pathname.startsWith('/_next/') ||
-    pathname.startsWith('/api/') ||
-    pathname.includes('.') ||
-    pathname === '/login'
+    pathname.includes('.')         // fichiers statiques (.ico, .png…)
   ) {
     return NextResponse.next()
   }
 
-  // Chercher un cookie de session Supabase (format: sb-PROJECTREF-auth-token)
+  // Pour toutes les autres pages (dashboard, clients, etc.)
+  // vérifier le cookie de session Supabase
   const cookies = request.cookies.getAll()
-  const hasSession = cookies.some(c => 
+  const hasSession = cookies.some(c =>
     (c.name.startsWith('sb-') && c.name.includes('-auth-token')) ||
     c.name === 'supabase-auth-token'
   )
 
-  // Si pas de session → login
   if (!hasSession) {
     const loginUrl = new URL('/login', request.url)
     return NextResponse.redirect(loginUrl)
