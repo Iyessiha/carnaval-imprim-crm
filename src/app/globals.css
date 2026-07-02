@@ -14,12 +14,12 @@
   box-sizing: border-box;
 }
 
+/* Ne pas forcer background sur body — la landing gère son propre fond */
 body {
-  background-color: var(--bg);
   color: var(--ink);
 }
 
-/* Scrollbar fine */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: #d8d2cb; border-radius: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
+/* Reset marges pour les pages dashboard */
+.dashboard-body {
+  background-color: var(--bg);
+}
