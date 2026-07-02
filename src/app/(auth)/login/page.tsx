@@ -3,10 +3,8 @@
 export const dynamic = 'force-dynamic'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
-  const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -17,20 +15,29 @@ export default function LoginPage() {
     setLoading(true)
     setError('')
 
-    // Import dynamique pour éviter le prerendering côté serveur
-    const { createClient } = await import('@/lib/supabase/client')
-    const supabase = createClient()
+    try {
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
 
-    const { error: err } = await supabase.auth.signInWithPassword({ email, password })
+      const { data, error: err } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (err) {
-      setError('Email ou mot de passe incorrect.')
+      if (err) {
+        setError('Email ou mot de passe incorrect.')
+        setLoading(false)
+        return
+      }
+
+      if (data.session) {
+        // Forcer un rechargement complet pour que les cookies soient bien posés
+        window.location.href = '/dashboard'
+      }
+    } catch {
+      setError('Une erreur est survenue. Réessayez.')
       setLoading(false)
-      return
     }
-
-    router.push('/dashboard')
-    router.refresh()
   }
 
   return (
@@ -51,19 +58,30 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin}>
           <div style={{ marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#7A736C', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.3px' }}>Email</label>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#7A736C', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.3px' }}>
+              E-mail
+            </label>
             <input
-              type="email" value={email} onChange={e => setEmail(e.target.value)} required
-              placeholder="vous@carnavalimprim.ci"
-              style={{ width: '100%', padding: '11px 14px', border: '1px solid #E4DDD6', borderRadius: 10, fontSize: 14, outline: 'none', fontFamily: 'inherit' }}
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              placeholder="admin@carnavalimprim.ci"
+              style={{ width: '100%', padding: '11px 14px', border: '1px solid #E4DDD6', borderRadius: 10, fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
             />
           </div>
+
           <div style={{ marginBottom: 24 }}>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#7A736C', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.3px' }}>Mot de passe</label>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#7A736C', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '.3px' }}>
+              Mot de passe
+            </label>
             <input
-              type="password" value={password} onChange={e => setPassword(e.target.value)} required
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
               placeholder="••••••••"
-              style={{ width: '100%', padding: '11px 14px', border: '1px solid #E4DDD6', borderRadius: 10, fontSize: 14, outline: 'none', fontFamily: 'inherit' }}
+              style={{ width: '100%', padding: '11px 14px', border: '1px solid #E4DDD6', borderRadius: 10, fontSize: 14, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' }}
             />
           </div>
 
@@ -73,13 +91,19 @@ export default function LoginPage() {
             </div>
           )}
 
-          <button type="submit" disabled={loading} style={{
-            width: '100%', padding: 13, background: '#C2117A', color: '#fff',
-            border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700,
-            cursor: loading ? 'not-allowed' : 'pointer', opacity: loading ? .7 : 1,
-            fontFamily: 'inherit'
-          }}>
-            {loading ? 'Connexion…' : 'Se connecter'}
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              width: '100%', padding: 13,
+              background: loading ? '#E4DDD6' : '#C2117A',
+              color: loading ? '#7A736C' : '#fff',
+              border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700,
+              cursor: loading ? 'not-allowed' : 'pointer',
+              fontFamily: 'inherit', transition: 'background .2s'
+            }}
+          >
+            {loading ? 'Connexion en cours…' : 'Se connecter'}
           </button>
         </form>
 
