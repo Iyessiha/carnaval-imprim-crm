@@ -150,7 +150,7 @@ export default function ParametresClient({ entreprise: initial, fneConfig: initi
       permissions: PERMISSIONS_DEFAUT[formUser.role as Role]
     }).eq('id', data)
     // Refresh
-    const { data: updated } = await sb.from('profiles_with_email').select('*').order('created_at')
+    const { data: updated } = await sb.from('profiles').select('id, nom, email, role, actif, poste, telephone, permissions, derniere_connexion, created_at').order('created_at')
     if (updated) setProfiles(updated as Profile[])
     setSaving(false); setModal(null); setFormUser(emptyUser)
     setSaved(`✅ Utilisateur ${formUser.nom} créé avec succès`); setTimeout(() => setSaved(''), 4000)
