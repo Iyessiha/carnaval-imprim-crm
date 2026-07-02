@@ -134,7 +134,7 @@ export default function LandingPage() {
           <li><a href="#produits">Produits</a></li>
           <li><a href="#processus">Comment ça marche</a></li>
           <li><a href="#contact">Contact</a></li>
-          <li><a href="/login" className="nav-cta">Espace client</a></li>
+          
         </ul>
       </nav>
 
@@ -334,7 +334,7 @@ export default function LandingPage() {
           <div className="cta-actions">
             <a href="tel:+2250719141313" className="btn-primary">📞 07 19 14 13 13</a>
             <a href="tel:+2250758265312" className="cta-tel">📞 07 58 26 53 12</a>
-            <a href="/login" className="cta-tel">🔐 Espace client</a>
+            <a href="/login" className="cta-tel">🔐 Espace Équipe</a>
           </div>
           <div style={{ marginTop:36, padding:'18px 24px', background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.1)', borderRadius:14, display:'inline-block', textAlign:'left' as const }}>
             <div style={{ fontSize:11, fontWeight:800, color:'rgba(255,255,255,.5)', textTransform:'uppercase' as const, letterSpacing:1.5, marginBottom:8 }}>Notre adresse</div>
@@ -370,7 +370,7 @@ export default function LandingPage() {
               📞 07 19 14 13 13<br/>📞 07 58 26 53 12<br/>📍 Cocody-Blockhauss, Abidjan
             </div>
             <div style={{ marginTop:20 }}>
-              <a href="/login" style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#C2117A', color:'#fff', padding:'10px 18px', borderRadius:10, textDecoration:'none', fontSize:13, fontWeight:700 }}>🔐 Espace client</a>
+              <a href="/login" style={{ display:'inline-flex', alignItems:'center', gap:6, background:'#C2117A', color:'#fff', padding:'10px 18px', borderRadius:10, textDecoration:'none', fontSize:13, fontWeight:700 }}>🔐 Espace Équipe</a>
             </div>
           </div>
         </div>
