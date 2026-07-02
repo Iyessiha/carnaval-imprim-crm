@@ -11,19 +11,21 @@ export default async function ParametresPage() {
     { data: entrepriseData },
     { data: fneData },
     { data: profiles },
-    { data: authData },
+    { data: authUser },
   ] = await Promise.all([
     supabase.from('entreprise').select('*').single(),
-    supabase.from('fne_config').select('*').single(),
-    // Requête directe sur profiles — email est stocké directement dedans
-    supabase.from('profiles').select('id, nom, email, role, actif, poste, telephone, permissions, derniere_connexion, created_at').order('created_at'),
+    supabase.from('fne_config').select('*').limit(1).single(),
+    supabase.from('profiles')
+      .select('id, nom, email, role, actif, poste, telephone, permissions, derniere_connexion, created_at')
+      .order('created_at'),
     supabase.auth.getUser(),
   ])
 
-  const entreprise = entrepriseData as Record<string, unknown> | null
-  const fneConfig = fneData as Record<string, unknown> | null
-  const currentUserId = authData.data.user?.id || ''
-  const currentProfile = (profiles || []).find(p => p.id === currentUserId)
+  // Typer proprement
+  const entreprise = (entrepriseData || {}) as Record<string, unknown>
+  const fneConfig = (fneData || {}) as Record<string, unknown>
+  const currentUserId = authUser?.data?.user?.id || ''
+  const currentProfile = (profiles || []).find((p: {id:string;role:string}) => p.id === currentUserId)
   const isAdmin = currentProfile?.role === 'Admin'
 
   return (
