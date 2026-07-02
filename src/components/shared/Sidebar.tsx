@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Users, FileText, Receipt, Printer,
@@ -41,13 +42,21 @@ export default function Sidebar() {
     <aside style={{
       width: 220, background: '#fff', borderRight: '1px solid #E4DDD6',
       position: 'fixed', top: 0, bottom: 0, left: 0, zIndex: 30,
-      display: 'flex', flexDirection: 'column', padding: '16px 10px',
+      display: 'flex', flexDirection: 'column', padding: '12px 10px',
       overflowY: 'auto'
     }}>
-      {/* Logo */}
-      <div style={{ padding: '4px 8px 16px' }}>
-        <div style={{ fontWeight: 800, fontSize: 15, color: '#1B1A1C', letterSpacing: '.5px' }}>CARNAVAL</div>
-        <div style={{ fontWeight: 700, fontSize: 9, color: '#C2117A', letterSpacing: '3px', marginTop: 1 }}>IMPRIM</div>
+      {/* Logo vrai */}
+      <div style={{ padding: '4px 4px 12px', borderBottom: '1px solid #F0EEEC', marginBottom: 8 }}>
+        <Link href="/" style={{ display: 'block' }}>
+          <Image
+            src="/logo.png"
+            alt="Carnaval Imprim"
+            width={180}
+            height={101}
+            style={{ width: '100%', height: 'auto', objectFit: 'contain' }}
+            priority
+          />
+        </Link>
       </div>
 
       {/* Navigation */}
@@ -57,7 +66,7 @@ export default function Sidebar() {
             <div key={idx} style={{
               fontSize: 9, fontWeight: 800, color: '#C2117A',
               textTransform: 'uppercase', letterSpacing: '1.5px',
-              padding: '10px 8px 3px', marginTop: 2
+              padding: '9px 8px 3px', marginTop: 2
             }}>
               {item.divider}
             </div>
@@ -66,12 +75,12 @@ export default function Sidebar() {
           return (
             <Link key={item.href} href={item.href!} style={{
               display: 'flex', alignItems: 'center', gap: 9,
-              padding: '9px 10px', borderRadius: 9, textDecoration: 'none',
+              padding: '8px 10px', borderRadius: 9, textDecoration: 'none',
               fontSize: 13, fontWeight: 600,
               color: active ? '#fff' : '#1B1A1C',
               background: active ? '#C2117A' : 'transparent',
             }}>
-              <item.icon size={16} />
+              <item.icon size={15} />
               {item.label}
             </Link>
           )
@@ -82,13 +91,13 @@ export default function Sidebar() {
       <div style={{ paddingTop: 10, borderTop: '1px solid #E4DDD6', marginTop: 8 }}>
         <button onClick={handleLogout} style={{
           display: 'flex', alignItems: 'center', gap: 9,
-          padding: '9px 10px', borderRadius: 9, width: '100%',
+          padding: '8px 10px', borderRadius: 9, width: '100%',
           border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
           color: '#7A736C', background: 'transparent', fontFamily: 'inherit'
         }}>
-          <LogOut size={16} /> Déconnexion
+          <LogOut size={15} /> Déconnexion
         </button>
-        <div style={{ fontSize: 10, color: '#7A736C', padding: '5px 8px 0', lineHeight: 1.5 }}>
+        <div style={{ fontSize: 9, color: '#B0A89F', padding: '4px 8px 0', lineHeight: 1.5 }}>
           NCC : 240220333S
         </div>
       </div>
