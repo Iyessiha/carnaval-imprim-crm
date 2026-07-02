@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import Sidebar from '@/components/shared/Sidebar'
+import PWAInstall from '@/components/PWAInstall'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
@@ -14,6 +15,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <main className="dashboard-main">
         {children}
       </main>
+      <PWAInstall />
     </div>
   )
 }
