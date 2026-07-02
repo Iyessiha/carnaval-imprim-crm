@@ -1,25 +1,214 @@
 @import "tailwindcss";
 
 :root {
-  --mag:      #C2117A;
-  --mag-dark: #9B0E61;
-  --mag-light:#F5E0EE;
-  --ink:      #1B1A1C;
-  --bg:       #F6F4F1;
-  --border:   #E4DDD6;
-  --muted:    #7A736C;
+  --mag:        #C2117A;
+  --mag-dark:   #9B0E61;
+  --mag-light:  #F5E0EE;
+  --cyan:       #00AEEF;
+  --orange:     #F7941D;
+  --ink:        #1B1A1C;
+  --bg:         #F6F4F1;
+  --border:     #E4DDD6;
+  --muted:      #7A736C;
+  --sidebar-w:  220px;
+  --header-h:   56px;
 }
 
-* {
-  box-sizing: border-box;
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { color: var(--ink); margin: 0; padding: 0; }
+
+/* ── RESPONSIVE UTILITAIRES ─────────────────────────────────────── */
+
+/* Masquer sur mobile */
+@media (max-width: 768px) {
+  .hide-mobile { display: none !important; }
+}
+/* Masquer sur desktop */
+@media (min-width: 769px) {
+  .hide-desktop { display: none !important; }
 }
 
-/* Ne pas forcer background sur body — la landing gère son propre fond */
-body {
-  color: var(--ink);
+/* ── DASHBOARD LAYOUT ───────────────────────────────────────────── */
+.dashboard-wrap {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg);
 }
 
-/* Reset marges pour les pages dashboard */
-.dashboard-body {
-  background-color: var(--bg);
+.dashboard-main {
+  flex: 1;
+  margin-left: var(--sidebar-w);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  transition: margin-left .25s;
+}
+
+/* Mobile : sidebar cachée, main full width + header sticky */
+@media (max-width: 768px) {
+  .dashboard-main {
+    margin-left: 0;
+    padding-top: var(--header-h);
+  }
+}
+
+/* ── SIDEBAR ────────────────────────────────────────────────────── */
+.sidebar-desktop {
+  position: fixed;
+  top: 0; bottom: 0; left: 0;
+  width: var(--sidebar-w);
+  z-index: 40;
+  background: #fff;
+  border-right: 1px solid var(--border);
+  transition: transform .25s;
+}
+
+/* Sidebar cachée sur mobile par défaut */
+@media (max-width: 768px) {
+  .sidebar-desktop {
+    transform: translateX(-100%);
+  }
+  .sidebar-desktop.open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,.2);
+  }
+}
+
+/* Overlay quand sidebar ouverte sur mobile */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.45);
+  z-index: 39;
+}
+@media (max-width: 768px) {
+  .sidebar-overlay.open { display: block; }
+}
+
+/* ── MOBILE HEADER ──────────────────────────────────────────────── */
+.mobile-header {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  height: var(--header-h);
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  z-index: 38;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+}
+@media (max-width: 768px) {
+  .mobile-header { display: flex; }
+}
+
+/* ── TABLEAUX RESPONSIVES ───────────────────────────────────────── */
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 768px) {
+  .table-scroll table { min-width: 600px; }
+}
+
+/* ── GRILLES ────────────────────────────────────────────────────── */
+.grid-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+@media (max-width: 480px) {
+  .grid-kpis { grid-template-columns: 1fr 1fr; gap: 8px; }
+}
+
+/* ── MODALS ─────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .modal-inner {
+    max-width: 100% !important;
+    margin: 0 !important;
+    border-radius: 16px 16px 0 0 !important;
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
+  .modal-wrap {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+}
+
+/* ── FORMULAIRES ────────────────────────────────────────────────── */
+@media (max-width: 600px) {
+  .form-grid-2 { grid-template-columns: 1fr !important; }
+  .form-grid-3 { grid-template-columns: 1fr !important; }
+}
+
+/* ── SECTIONS PADDING ───────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .page-pad { padding: 16px !important; }
+}
+
+/* ── TOUCH TARGETS ──────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  button, a, input, select {
+    min-height: 44px;
+  }
+  input[type="checkbox"], input[type="radio"] {
+    min-height: unset;
+    width: 18px; height: 18px;
+  }
+}
+
+/* ── BOTTOM NAV MOBILE ──────────────────────────────────────────── */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  height: 60px;
+  background: #fff;
+  border-top: 1px solid var(--border);
+  z-index: 38;
+  align-items: center;
+  justify-content: space-around;
+}
+@media (max-width: 768px) {
+  .bottom-nav { display: flex; }
+  /* Ajouter padding-bottom pour éviter que le contenu soit caché */
+  .dashboard-main { padding-bottom: 68px; }
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-decoration: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 10px;
+  transition: color .15s;
+  min-width: 52px;
+  justify-content: center;
+}
+.bottom-nav-item.active {
+  color: var(--mag);
+}
+.bottom-nav-item.active svg {
+  color: var(--mag);
+}
+
+/* ── PWA SAFE AREAS (iPhone notch) ─────────────────────────────── */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+    height: calc(60px + env(safe-area-inset-bottom));
+  }
+  .mobile-header {
+    padding-top: env(safe-area-inset-top);
+  }
 }
