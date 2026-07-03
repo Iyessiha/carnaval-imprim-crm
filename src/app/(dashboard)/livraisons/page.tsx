@@ -2,17 +2,13 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import BonsLivraisonClient from './BonsLivraisonClient'
 export const metadata = { title: 'Bons de livraison — Carnaval Imprim CRM' }
-export default async function BonsLivraisonPage() {
+export default async function LivraisonsPage() {
   const supabase = await createClient()
-  const [
-    { data: productions },
-    { data: clients },
-    { data: entData },
-  ] = await Promise.all([
-    supabase.from('productions').select('id, caracteristique, format, quantite, date, statut, client_id, clients(nom, adresse, telephone)').order('created_at', { ascending: false }),
-    supabase.from('clients').select('id, nom, adresse, telephone').order('nom'),
+  const [{ data: productions }, { data: entData }] = await Promise.all([
+    supabase.from('productions')
+      .select('id, date, caracteristique, format, quantite, statut, numero_bl, date_livraison_reelle, date_livraison_prevue, client_id, devis_id, clients(nom, adresse, telephone), devis(numero)')
+      .order('created_at', { ascending: false }),
     supabase.from('entreprise').select('nom, siege, tel, rc, ncc').single(),
   ])
-  const ent = entData as Record<string,string>|null
-  return <BonsLivraisonClient productions={productions||[]} clients={clients||[]} entreprise={ent} />
+  return <BonsLivraisonClient productions={productions||[]} entreprise={entData as Record<string,string>|null} />
 }
