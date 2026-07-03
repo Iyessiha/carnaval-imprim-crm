@@ -1,13 +1,13 @@
+export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
-import CatalogueClient from './CatalogueClient'
-
-export const metadata = { title: 'Catalogue — Carnaval Imprim CRM' }
-
-export default async function CataloguePage() {
+import TarifsClient from './TarifsClient'
+export const metadata = { title: 'Tarifs d\'impression — Carnaval Imprim CRM' }
+export default async function TarifsPage() {
   const supabase = await createClient()
-  const [{ data: produits }, { data: types }] = await Promise.all([
-    supabase.from('produits').select('*, types_impression(libelle)').order('nom'),
-    supabase.from('types_impression').select('*').order('libelle'),
-  ])
-  return <CatalogueClient produits={produits || []} types={types || []} />
+  const { data: tarifs } = await supabase
+    .from('tarifs_impression')
+    .select('*')
+    .order('categorie')
+    .order('ordre')
+  return <TarifsClient tarifs={tarifs || []} />
 }
