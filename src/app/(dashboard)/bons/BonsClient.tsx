@@ -12,7 +12,7 @@ import { Check, Pencil, Trash2, Eye, Plus, X, Printer } from 'lucide-react'
 
 const STATUTS = ['En cours', 'Reçu', 'Annulé'] as const
 
-type Ligne = { id?: string; designation: string; qte: number; pu: number; unite: string }
+type Ligne = { id?: string; designation: string; qte: number; pu: number; unite: string; tva?: number }
 type Bon = {
   id: string; numero: string; fournisseur_id: string; date: string; statut: string; notes?: string
   bons_commande_lignes: Ligne[]
@@ -20,7 +20,7 @@ type Bon = {
 }
 type Fournisseur = { id: string; nom: string }
 
-export default function BonsClient({ bons: initial, fournisseurs }: { bons: Bon[]; fournisseurs: Fournisseur[] }) {
+export default function BonsClient({ bons: initial, fournisseurs, tauxTva = 18 }: { bons: Bon[]; fournisseurs: Fournisseur[]; tauxTva?: number }) {
   const router = useRouter()
   const [bons, setBons] = useState(initial)
   const [q, setQ] = useState('')
