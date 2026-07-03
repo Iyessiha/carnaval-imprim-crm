@@ -24,7 +24,7 @@ type Client = { id: string; nom: string; template_fne_defaut: string; telephone?
 type Produit = { id: string; nom: string; prix_base: number; unite: string }
 type Entreprise = { nom: string; siege: string; tel: string; email: string; rc: string; ncc: string; taux_tva: number } | null
 
-export default function DevisClient({ devis: initial, clients, produits, tauxTva, entreprise }: {
+export default function DevisClient({ devis: initial, clients, produits, tarifs = [], tauxTva, entreprise }: {
   devis: Devis[]; clients: Client[]; produits: Produit[]; tauxTva: number; entreprise?: Entreprise
 }) {
   const router = useRouter()
@@ -62,14 +62,16 @@ export default function DevisClient({ devis: initial, clients, produits, tauxTva
       const { error: e } = await sb.from('devis').update(body).eq('id', sel.id)
       if (e) { setError(e.message); setLoading(false); return }
       await sb.from('devis_lignes').delete().eq('devis_id', sel.id)
-      if (devis_lignes?.length) await sb.from('devis_lignes').insert(devis_lignes.map((l: Ligne, i: number) => ({ ...l, devis_id: sel.id, ordre: i })))
+      const lignesValides = (devis_lignes||[]).filter((l: Ligne) => l.designation?.trim())
+    if (lignesValides.length) await sb.from('devis_lignes').insert(lignesValides.map((l: Ligne, i: number) => ({ designation: l.designation, qte: l.qte||1, pu: l.pu||0, remise_ligne: l.remise_ligne||0, produit_id: l.produit_id||null, devis_id: sel.id, ordre: i })))
       const cNom = clients.find(c => c.id === form.client_id)?.nom || ''
       setDevis(prev => prev.map(d => d.id === sel.id ? { ...d, ...form, devis_lignes: devis_lignes || [], clients: { nom: cNom } } as Devis : d))
     } else {
       const { data: numero } = await sb.rpc('next_numero', { p_type: 'DV', p_annee: new Date().getFullYear() })
       const { data: created, error: e } = await sb.from('devis').insert({ ...body, numero }).select().single()
       if (e) { setError(e.message); setLoading(false); return }
-      if (devis_lignes?.length) await sb.from('devis_lignes').insert(devis_lignes.map((l: Ligne, i: number) => ({ ...l, devis_id: created.id, ordre: i })))
+      const lignesValides2 = (devis_lignes||[]).filter((l: Ligne) => l.designation?.trim())
+    if (lignesValides2.length) await sb.from('devis_lignes').insert(lignesValides2.map((l: Ligne, i: number) => ({ designation: l.designation, qte: l.qte||1, pu: l.pu||0, remise_ligne: l.remise_ligne||0, produit_id: l.produit_id||null, devis_id: created.id, ordre: i })))
       const cNom = clients.find(c => c.id === form.client_id)?.nom || ''
       setDevis(prev => [{ ...created, devis_lignes: devis_lignes || [], clients: { nom: cNom } } as Devis, ...prev])
     }
@@ -232,7 +234,7 @@ ${d.notes ? `<div class="notes"><strong>Notes :</strong> ${d.notes}</div>` : ''}
         </Field>
       </div>
       <div style={{ marginBottom: 14 }}>
-        <LignesEditor lignes={form.devis_lignes || []} onChange={l => setF('devis_lignes', l)} produits={produits} />
+        <LignesEditor lignes={form.devis_lignes || []} onChange={l => setF('devis_lignes', l)} produits={produits} tarifs={tarifs} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'center' }}>
         <Field label="Remise (FCFA)"><input type="number" min="0" style={inputStyle} value={form.remise || 0} onChange={e => setF('remise', Number(e.target.value))} /></Field>
