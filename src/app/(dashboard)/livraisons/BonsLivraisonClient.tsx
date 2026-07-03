@@ -13,7 +13,7 @@ type Production = {
   date_livraison_prevue: string|null; date_livraison_reelle: string|null
   client_id: string|null; devis_id: string|null
   clients: { nom: string; adresse?: string; telephone?: string }|null
-  devis: { numero: string }|null
+  devis?: { numero?: string }|null
 }
 type Ent = Record<string,string>|null
 
@@ -73,7 +73,7 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
     <div class="badge">BON DE LIVRAISON</div>
     <div style="font-size:16px;font-weight:900;margin-top:8px">N° ${numero}</div>
     <div style="font-size:11px;color:#888;margin-top:3px">Date : ${new Date().toLocaleDateString('fr-FR')}</div>
-    ${p.devis ? `<div style="font-size:11px;color:#2A5FA5;margin-top:3px">📋 Réf. devis : ${p.devis.numero}</div>` : ''}
+    ${p.devis?.numero ? `<div style="font-size:11px;color:#2A5FA5;margin-top:3px">📋 Réf. devis : ${p.devis.numero}</div>` : ''}
   </div>
 </div>
 <div class="grid2">
@@ -151,7 +151,7 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
               <td style={{ ...td, fontSize:12, whiteSpace:'nowrap' as const }}>{formatDateFR(p.date)}</td>
               <td style={{ ...td, fontWeight:600 }}>{p.clients?.nom||'—'}</td>
               <td style={{ ...td, fontSize:12 }}>
-                {p.devis ? <span style={{ color:'#2A5FA5', fontWeight:600 }}>📋 {p.devis.numero}</span> : <span style={{ color:'#B0A89F' }}>—</span>}
+                {p.devis?.numero ? <span style={{ color:'#2A5FA5', fontWeight:600 }}>📋 {p.devis.numero}</span> : <span style={{ color:'#B0A89F' }}>—</span>}
               </td>
               <td style={{ ...td, maxWidth:200 }}>
                 <div style={{ fontSize:12, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' as const }}>
