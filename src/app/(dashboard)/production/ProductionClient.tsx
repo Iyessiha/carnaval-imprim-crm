@@ -1,6 +1,5 @@
 'use client'
 import { useState, useMemo } from 'react'
-import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatDateFR, today } from '@/lib/utils'
 import Badge from '@/components/ui/Badge'
@@ -8,289 +7,431 @@ import Modal from '@/components/ui/Modal'
 import PageHeader from '@/components/ui/PageHeader'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
-import { Check, Pencil, Trash2, Eye, Plus } from 'lucide-react'
+import { Check, Pencil, Trash2, Eye, Plus, Printer, PackageCheck, Link2 } from 'lucide-react'
 
 const STATUTS = ['En attente', 'En production', 'Terminé', 'Livré'] as const
 const NATURES = ['PRODUCTION', 'SOUS-TRAITANCE', 'ECHANTILLON'] as const
+const FORMATS = ['A6','A5','A4','A3','A2','A1','A0','8,5×5,5 cm','10×21 cm','21×21 cm','15×21 cm','Personnalisé']
+const FINITIONS = ['Sans pelliculage','Soft touch','Pelliculage brillant','Vernis sélectif','Avec œillets','Avec structure']
 
+const STATUT_STYLE: Record<string,{bg:string;color:string}> = {
+  'En attente':    { bg:'#FEF3E2', color:'#D4780A' },
+  'En production': { bg:'#E5EDF8', color:'#2A5FA5' },
+  'Terminé':       { bg:'#F0E8F8', color:'#7B2FA5' },
+  'Livré':         { bg:'#E8F7EE', color:'#2D7A4E' },
+}
+
+type DevisRef = { id: string; numero: string; statut: string; clients: {nom:string}|null; devis_lignes: {designation:string;qte:number}[] }
+type TypeImp = { id: string; libelle: string }
+type Client = { id: string; nom: string; telephone?: string; adresse?: string }
 type Production = {
   id: string; date: string; nature: string; caracteristique: string
-  type_impression_id: string | null; papier: string | null
-  recto_verso: boolean; nb_pages: number | null; finition: string | null
-  format: string | null; quantite: number; statut: string
-  date_livraison_prevue: string | null; client_id: string | null
-  notes: string | null; created_at: string
-  clients: { nom: string } | null
-  types_impression: { libelle: string } | null
+  type_impression_id: string|null; format: string|null; quantite: number
+  statut: string; date_livraison_prevue: string|null; date_livraison_reelle: string|null
+  client_id: string|null; devis_id: string|null; numero_bl: string|null
+  notes: string|null; created_at: string; recto_verso: boolean
+  finition: string|null; nb_pages: number|null; papier: string|null
+  clients: {nom:string}|null; types_impression: {libelle:string}|null; devis?: {numero:string}|null
 }
-type Client = { id: string; nom: string }
-type Type = { id: string; libelle: string }
-type Profile = { id: string; nom: string }
 
-export default function ProductionClient({ productions: initial, clients, types, profiles }: {
-  productions: Production[]; clients: Client[]; types: Type[]; profiles: Profile[]
+type F = {
+  nature: string; caracteristique: string; type_impression_id: string
+  format: string; quantite: number; statut: string; recto_verso: boolean
+  finition: string; nb_pages: string; papier: string
+  date: string; date_livraison_prevue: string
+  client_id: string; devis_id: string; notes: string
+}
+
+const emptyF = (): F => ({
+  nature: 'PRODUCTION', caracteristique: '', type_impression_id: '',
+  format: 'A4', quantite: 100, statut: 'En attente', recto_verso: false,
+  finition: 'Sans pelliculage', nb_pages: '', papier: '',
+  date: today(), date_livraison_prevue: '',
+  client_id: '', devis_id: '', notes: '',
+})
+
+export default function ProductionClient({
+  productions: init, clients, devis, types, entreprise
+}: {
+  productions: Production[]; clients: Client[]; devis: DevisRef[]
+  types: TypeImp[]; entreprise: Record<string,string>|null
 }) {
-  const router = useRouter()
-  const [productions, setProductions] = useState(initial)
+  const [prods, setProds] = useState<Production[]>(init)
   const [q, setQ] = useState('')
-  const [filtre, setFiltre] = useState('Tous')
-  const [modal, setModal] = useState<'create' | 'edit' | 'view' | null>(null)
-  const [sel, setSel] = useState<Production | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [filtreStatut, setFiltreStatut] = useState('Tous')
+  const [modal, setModal] = useState<'create'|'edit'|'view'|'bl'|null>(null)
+  const [sel, setSel] = useState<Production|null>(null)
+  const [form, setForm] = useState<F>(emptyF())
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [blNum, setBlNum] = useState('')
 
-  const filtered = useMemo(() => productions
-    .filter(p => filtre === 'Tous' || p.statut === filtre)
-    .filter(p => (p.caracteristique + (p.clients?.nom || '') + p.format).toLowerCase().includes(q.toLowerCase())),
-    [productions, q, filtre])
+  const f = (k: keyof F, v: string|number|boolean) => setForm(p => ({ ...p, [k]: v }))
 
-  const emptyForm = {
-    date: today(), nature: 'PRODUCTION', caracteristique: '',
-    type_impression_id: types[0]?.id || '', papier: '',
-    recto_verso: false, nb_pages: null, finition: '', format: '',
-    quantite: 1, statut: 'En attente', date_livraison_prevue: '',
-    client_id: '', notes: '',
+  const filtered = useMemo(() => prods
+    .filter(p => filtreStatut === 'Tous' || p.statut === filtreStatut)
+    .filter(p => (p.caracteristique + (p.clients?.nom||'')).toLowerCase().includes(q.toLowerCase())),
+    [prods, filtreStatut, q])
+
+  const openCreate = () => { setForm(emptyF()); setError(''); setModal('create') }
+  const openEdit = (p: Production) => {
+    setSel(p)
+    setForm({
+      nature: p.nature, caracteristique: p.caracteristique,
+      type_impression_id: p.type_impression_id||'',
+      format: p.format||'A4', quantite: p.quantite, statut: p.statut,
+      recto_verso: p.recto_verso, finition: p.finition||'Sans pelliculage',
+      nb_pages: String(p.nb_pages||''), papier: p.papier||'',
+      date: p.date, date_livraison_prevue: p.date_livraison_prevue||'',
+      client_id: p.client_id||'', devis_id: p.devis_id||'', notes: p.notes||'',
+    })
+    setError(''); setModal('edit')
   }
-  const [form, setForm] = useState<Partial<Production>>(emptyForm)
-  const setF = (k: string, v: unknown) => setForm(p => ({ ...p, [k]: v }))
+  const close = () => { setModal(null); setSel(null); setError('') }
 
-  const openCreate = () => { setError(''); setForm(emptyForm); setModal('create') }
-  const openEdit = (p: Production) => { setError(''); setSel(p); setForm({ ...p }); setModal('edit') }
-  const openView = (p: Production) => { setSel(p); setModal('view') }
+  // Pré-remplir depuis un devis
+  const importDevis = (devisId: string) => {
+    const d = devis.find(dv => dv.id === devisId)
+    if (!d) return
+    const caract = d.devis_lignes.map(l => `${l.designation} ×${l.qte}`).join(' / ')
+    f('devis_id', devisId)
+    f('client_id', '') // sera sélectionné via le devis
+    if (caract) f('caracteristique', caract.slice(0, 200))
+  }
 
   const save = async () => {
-    if (!form.caracteristique?.trim()) { setError('La caractéristique est obligatoire.'); return }
-    setLoading(true); setError('')
+    if (!form.caracteristique.trim()) { setError('La caractéristique est obligatoire.'); return }
+    if (!form.quantite) { setError('La quantité est obligatoire.'); return }
+    setSaving(true); setError('')
     const sb = getSupabase()
     const body = {
-      date: form.date || today(),
-      nature: form.nature || 'PRODUCTION',
+      nature: form.nature,
       caracteristique: form.caracteristique,
       type_impression_id: form.type_impression_id || null,
-      papier: form.papier || null,
-      recto_verso: form.recto_verso || false,
-      nb_pages: form.nb_pages || null,
-      finition: form.finition || null,
       format: form.format || null,
-      quantite: form.quantite || 1,
-      statut: form.statut || 'En attente',
+      quantite: Number(form.quantite),
+      statut: form.statut,
+      recto_verso: form.recto_verso,
+      finition: form.finition || null,
+      nb_pages: form.nb_pages ? Number(form.nb_pages) : null,
+      papier: form.papier || null,
+      date: form.date || today(),
       date_livraison_prevue: form.date_livraison_prevue || null,
       client_id: form.client_id || null,
+      devis_id: form.devis_id || null,
       notes: form.notes || null,
     }
 
-    if (sel?.id) {
+    if (modal === 'edit' && sel) {
       const { error: e } = await sb.from('productions').update(body).eq('id', sel.id)
-      if (e) { setError(e.message); setLoading(false); return }
-      const client = clients.find(c => c.id === form.client_id)
-      const type = types.find(t => t.id === form.type_impression_id)
-      setProductions(prev => prev.map(p => p.id === sel.id ? {
-        ...p, ...body,
-        clients: client ? { nom: client.nom } : null,
-        types_impression: type ? { libelle: type.libelle } : null,
-      } : p))
+      if (e) { setError(e.message); setSaving(false); return }
+      const cli = clients.find(c => c.id === form.client_id)
+      const typ = types.find(t => t.id === form.type_impression_id)
+      setProds(prev => prev.map(p => p.id === sel.id ? { ...p, ...body, clients: cli ? {nom:cli.nom} : p.clients, types_impression: typ ? {libelle:typ.libelle} : p.types_impression } : p))
     } else {
-      const { data, error: e } = await sb.from('productions').insert(body).select().single()
-      if (e) { setError(e.message); setLoading(false); return }
-      const client = clients.find(c => c.id === form.client_id)
-      const type = types.find(t => t.id === form.type_impression_id)
-      setProductions(prev => [{ ...data, clients: client ? { nom: client.nom } : null, types_impression: type ? { libelle: type.libelle } : null }, ...prev])
+      const { data, error: e } = await sb.from('productions').insert(body).select('*, clients(nom), types_impression(libelle)').single()
+      if (e) { setError(e.message); setSaving(false); return }
+      setProds(prev => [data as Production, ...prev])
     }
-    setLoading(false); setModal(null); setSel(null); router.refresh()
+    setSaving(false); close()
   }
 
   const del = async (p: Production) => {
-    if (!confirm(`Supprimer cet ordre de production ?`)) return
+    if (!confirm(`Supprimer la production « ${p.caracteristique.slice(0,40)} » ?`)) return
     const sb = getSupabase()
     await sb.from('productions').delete().eq('id', p.id)
-    setProductions(prev => prev.filter(x => x.id !== p.id)); router.refresh()
+    setProds(prev => prev.filter(x => x.id !== p.id))
   }
 
-  const updateStatut = async (p: Production, statut: string) => {
+  const changeStatut = async (p: Production, statut: string) => {
     const sb = getSupabase()
     await sb.from('productions').update({ statut }).eq('id', p.id)
-    setProductions(prev => prev.map(x => x.id === p.id ? { ...x, statut } : x))
-    router.refresh()
+    setProds(prev => prev.map(x => x.id === p.id ? { ...x, statut } : x))
   }
 
-  const FormContent = (
-    <div>
-      {error && <div style={{ background: '#fde8e8', color: '#D14343', padding: '10px 14px', borderRadius: 10, marginBottom: 14, fontSize: 13 }}>{error}</div>}
+  const saveBL = async () => {
+    if (!sel) return
+    const sb = getSupabase()
+    const num = blNum || `BL-${new Date().getFullYear()}-${String(Math.floor(Math.random()*9000)+1000)}`
+    await sb.from('productions').update({
+      numero_bl: num,
+      statut: 'Livré',
+      date_livraison_reelle: today(),
+    }).eq('id', sel.id)
+    setProds(prev => prev.map(p => p.id === sel.id
+      ? { ...p, numero_bl: num, statut: 'Livré', date_livraison_reelle: today() }
+      : p))
+    imprimerBL({ ...sel, numero_bl: num })
+    close()
+  }
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <Field label="Date"><input type="date" style={inputStyle} value={form.date || today()} onChange={e => setF('date', e.target.value)} /></Field>
-        <Field label="Nature">
-          <select style={inputStyle} value={form.nature || 'PRODUCTION'} onChange={e => setF('nature', e.target.value)}>
-            {NATURES.map(n => <option key={n}>{n}</option>)}
-          </select>
-        </Field>
-        <Field label="Statut">
-          <select style={inputStyle} value={form.statut || 'En attente'} onChange={e => setF('statut', e.target.value)}>
-            {STATUTS.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </Field>
+  const imprimerBL = (p: Production) => {
+    const ent = entreprise
+    const num = p.numero_bl || `BL-${new Date().getFullYear()}-XXXX`
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
+<title>BL ${num}</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:12px;color:#1B1A1C;padding:30px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}
+  .logo{font-size:22px;font-weight:900}.logo span{color:#C2117A}
+  .badge{background:#C2117A;color:#fff;padding:8px 18px;border-radius:8px;font-size:18px;font-weight:700}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:16px 0}
+  .box{background:#F6F4F1;border-radius:8px;padding:14px;border-left:4px solid #C2117A}
+  .box-t{font-size:9px;font-weight:800;text-transform:uppercase;color:#7A736C;margin-bottom:6px}
+  .box-v{font-size:13px;font-weight:700}
+  table{width:100%;border-collapse:collapse;margin:16px 0}
+  th{background:#1B1A1C;color:#fff;padding:8px 12px;text-align:left;font-size:11px}
+  td{padding:10px 12px;border-bottom:1px solid #eee;font-size:12px}
+  .sign{display:flex;justify-content:space-between;margin-top:40px;padding-top:16px;border-top:1px solid #E4DDD6}
+  .sign-box{text-align:center;width:200px}
+  .sign-line{border-bottom:1.5px solid #1B1A1C;margin-top:48px}
+  .sign-label{font-size:10px;color:#7A736C;margin-top:5px}
+  .footer{margin-top:24px;font-size:9px;color:#999;text-align:center;border-top:1px solid #eee;padding-top:10px}
+  @media print{body{padding:16px}}
+</style></head><body>
+<div class="header">
+  <div><div class="logo">CARNAVAL<span>IMPRIM</span></div>
+  <div style="font-size:10px;color:#888;margin-top:4px">${ent?.siege||'Cocody-Blockhauss, Abidjan'}</div>
+  <div style="font-size:10px;color:#888">Tél : ${ent?.tel||'07 19 14 13 13'}</div></div>
+  <div style="text-align:right"><div class="badge">BON DE LIVRAISON</div>
+  <div style="font-size:15px;font-weight:900;margin-top:6px">N° ${num}</div>
+  <div style="font-size:11px;color:#888;margin-top:3px">Date : ${new Date().toLocaleDateString('fr-FR')}</div>
+  ${p.devis ? `<div style="font-size:11px;color:#888">Réf. devis : ${(p.devis as {numero:string}).numero}</div>` : ''}
+  </div>
+</div>
+<div class="grid2">
+  <div class="box"><div class="box-t">Client</div>
+  <div class="box-v">${p.clients?.nom||'—'}</div></div>
+  <div class="box"><div class="box-t">Commande</div>
+  <div class="box-v">${p.caracteristique.slice(0,60)}</div></div>
+</div>
+<table><thead><tr>
+  <th>Désignation</th><th>Format</th><th>Qté commandée</th><th>Qté livrée</th><th>Observation</th>
+</tr></thead><tbody><tr>
+  <td>${p.caracteristique}</td>
+  <td>${p.format||'—'}</td>
+  <td style="text-align:center;font-weight:700">${p.quantite?.toLocaleString('fr-FR')}</td>
+  <td style="text-align:center;font-weight:700;color:#3A9A5C">${p.quantite?.toLocaleString('fr-FR')}</td>
+  <td style="color:#3A9A5C">✓ Conforme</td>
+</tr></tbody></table>
+<div style="background:#E8F7EE;border-radius:8px;padding:10px 16px;font-size:12px">
+  ✅ Marchandise livrée en bon état. Toute réclamation dans les <strong>48h</strong>.
+</div>
+<div class="sign">
+  <div class="sign-box"><div class="sign-line"></div><div class="sign-label">Livreur / Carnaval Imprim</div></div>
+  <div class="sign-box"><div class="sign-line"></div><div class="sign-label">Client — Signature & Cachet</div></div>
+</div>
+<div class="footer">${ent?.nom||'CARNAVAL IMPRIM'} SARL · ${ent?.siege||''} · RC : ${ent?.rc||''} · NCC : ${ent?.ncc||'240220333S'}</div>
+</body></html>`
+    const w = window.open('','_blank')
+    if (w) { w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400) }
+  }
+
+  const FormBody = () => (
+    <div>
+      {error && <div style={{background:'#FDE8E8',color:'#D14343',padding:'10px 14px',borderRadius:10,marginBottom:12,fontSize:13}}>{error}</div>}
+
+      {/* Import depuis devis accepté */}
+      <div style={{background:'#E5EDF8',borderRadius:10,padding:'10px 14px',marginBottom:14}}>
+        <label style={{fontSize:11,fontWeight:800,color:'#2A5FA5',textTransform:'uppercase' as const,letterSpacing:'.5px',display:'block',marginBottom:6}}>
+          📋 Importer depuis un devis accepté
+        </label>
+        <select style={inputStyle} value={form.devis_id}
+          onChange={e => { f('devis_id', e.target.value); importDevis(e.target.value) }}>
+          <option value="">— Saisie manuelle —</option>
+          {devis.map(d => (
+            <option key={d.id} value={d.id}>{d.numero} · {d.clients?.nom} · {d.devis_lignes[0]?.designation?.slice(0,40)}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+        <Field label="Client"><select style={inputStyle} value={form.client_id} onChange={e=>f('client_id',e.target.value)}>
+          <option value="">— Sélectionner —</option>
+          {clients.map(c=><option key={c.id} value={c.id}>{c.nom}</option>)}
+        </select></Field>
+        <Field label="Nature"><select style={inputStyle} value={form.nature} onChange={e=>f('nature',e.target.value)}>
+          {NATURES.map(n=><option key={n}>{n}</option>)}
+        </select></Field>
       </div>
 
       <Field label="Caractéristique / Description *">
-        <textarea style={{ ...inputStyle, minHeight: 72, resize: 'vertical' }}
-          value={form.caracteristique || ''}
-          onChange={e => setF('caracteristique', e.target.value)}
-          placeholder="Ex: Brochure dos carré collé — SYNTHESE PND — couv 250g offset 80g recto-verso 50 pages"
-        />
+        <textarea style={{...inputStyle,height:80,resize:'vertical' as const}} value={form.caracteristique}
+          onChange={e=>f('caracteristique',e.target.value)} placeholder="Ex: Brochures piqûre à cheval 50p, couv 250g, intérieur 90g, quadri recto-verso" />
       </Field>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <Field label="Client">
-          <select style={inputStyle} value={form.client_id || ''} onChange={e => setF('client_id', e.target.value)}>
-            <option value="">— Sans client —</option>
-            {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-          </select>
-        </Field>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
         <Field label="Type d'impression">
-          <select style={inputStyle} value={form.type_impression_id || ''} onChange={e => setF('type_impression_id', e.target.value)}>
-            <option value="">— Sélectionner —</option>
-            {types.map(t => <option key={t.id} value={t.id}>{t.libelle}</option>)}
+          <select style={inputStyle} value={form.type_impression_id} onChange={e=>f('type_impression_id',e.target.value)}>
+            <option value="">— Choisir —</option>
+            {types.map(t=><option key={t.id} value={t.id}>{t.libelle}</option>)}
           </select>
+        </Field>
+        <Field label="Format">
+          <input list="formats-prod" style={inputStyle} value={form.format} onChange={e=>f('format',e.target.value)} />
+          <datalist id="formats-prod">{FORMATS.map(f=><option key={f} value={f}/>)}</datalist>
+        </Field>
+        <Field label="Quantité *">
+          <input type="number" min="1" style={inputStyle} value={form.quantite} onChange={e=>f('quantite',parseInt(e.target.value)||0)} />
         </Field>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <Field label="Format fini"><input style={inputStyle} value={form.format || ''} onChange={e => setF('format', e.target.value)} placeholder="Ex: 21x29,7cm" /></Field>
-        <Field label="Quantité"><input type="number" min="1" style={inputStyle} value={form.quantite || 1} onChange={e => setF('quantite', Number(e.target.value))} /></Field>
-        <Field label="Livraison prévue"><input type="date" style={inputStyle} value={form.date_livraison_prevue || ''} onChange={e => setF('date_livraison_prevue', e.target.value)} /></Field>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+        <Field label="Recto / Verso">
+          <select style={inputStyle} value={form.recto_verso?'oui':'non'} onChange={e=>f('recto_verso',e.target.value==='oui')}>
+            <option value="non">Recto seul</option>
+            <option value="oui">Recto-verso</option>
+          </select>
+        </Field>
+        <Field label="Finition">
+          <input list="finitions-prod" style={inputStyle} value={form.finition} onChange={e=>f('finition',e.target.value)} />
+          <datalist id="finitions-prod">{FINITIONS.map(f=><option key={f} value={f}/>)}</datalist>
+        </Field>
+        <Field label="Nb. pages">
+          <input type="number" min="1" style={inputStyle} value={form.nb_pages} onChange={e=>f('nb_pages',e.target.value)} placeholder="50" />
+        </Field>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-        <Field label="Papier / Support"><input style={inputStyle} value={form.papier || ''} onChange={e => setF('papier', e.target.value)} placeholder="Ex: Couché 250g" /></Field>
-        <Field label="Finition"><input style={inputStyle} value={form.finition || ''} onChange={e => setF('finition', e.target.value)} placeholder="Ex: Soft touch, Vernis" /></Field>
-        <Field label="Nb pages"><input type="number" min="0" style={inputStyle} value={form.nb_pages || ''} onChange={e => setF('nb_pages', e.target.value ? Number(e.target.value) : null)} placeholder="0" /></Field>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
+        <Field label="Support / Papier">
+          <input style={inputStyle} value={form.papier} onChange={e=>f('papier',e.target.value)} placeholder="Ex: Couché 250g" />
+        </Field>
+        <Field label="Date commande">
+          <input type="date" style={inputStyle} value={form.date} onChange={e=>f('date',e.target.value)} />
+        </Field>
+        <Field label="Livraison prévue">
+          <input type="date" style={inputStyle} value={form.date_livraison_prevue} onChange={e=>f('date_livraison_prevue',e.target.value)} />
+        </Field>
       </div>
 
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 14, cursor: 'pointer' }}>
-        <input type="checkbox" checked={form.recto_verso || false} onChange={e => setF('recto_verso', e.target.checked)} />
-        Recto-verso
-      </label>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+        <Field label="Statut">
+          <select style={inputStyle} value={form.statut} onChange={e=>f('statut',e.target.value)}>
+            {STATUTS.map(s=><option key={s}>{s}</option>)}
+          </select>
+        </Field>
+        <Field label="Notes internes">
+          <input style={inputStyle} value={form.notes} onChange={e=>f('notes',e.target.value)} />
+        </Field>
+      </div>
 
-      <Field label="Notes internes">
-        <textarea style={{ ...inputStyle, minHeight: 56, resize: 'vertical' }} value={form.notes || ''} onChange={e => setF('notes', e.target.value)} />
-      </Field>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 14 }}>
-        <BtnGhost onClick={() => { setModal(null); setSel(null) }}>Annuler</BtnGhost>
-        <BtnPrimary onClick={save} disabled={loading}><Check size={16} />{loading ? 'Enregistrement…' : 'Enregistrer'}</BtnPrimary>
+      <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:8}}>
+        <BtnGhost onClick={close}>Annuler</BtnGhost>
+        <BtnPrimary onClick={save} disabled={saving}>
+          <Check size={15}/> {saving?'…':modal==='edit'?'Sauvegarder':'Créer l\'ordre'}
+        </BtnPrimary>
       </div>
     </div>
   )
 
-  // Stats
-  const stats = STATUTS.map(s => ({ label: s, count: productions.filter(p => p.statut === s).length }))
+  // Stats rapides
+  const stats = {
+    total: prods.length,
+    enCours: prods.filter(p=>p.statut==='En production').length,
+    retard: prods.filter(p=>p.date_livraison_prevue && p.date_livraison_prevue < today() && p.statut !== 'Livré').length,
+    livre: prods.filter(p=>p.statut==='Livré').length,
+  }
 
   return (
-    <div style={{ padding: 24 }}>
-      <PageHeader
-        title="Production"
-        subtitle={`${productions.length} ordres · ${productions.filter(p => p.statut === 'En production').length} en cours`}
-        q={q} setQ={setQ} searchPlaceholder="Rechercher un ordre…"
+    <div style={{padding:24}}>
+      <PageHeader title="Production" subtitle={`${stats.total} ordres · ${stats.enCours} en cours · ${stats.retard} en retard`}
+        q={q} setQ={setQ} searchPlaceholder="Rechercher…"
         onAdd={openCreate} addLabel="Nouvel ordre"
         extra={
-          <select value={filtre} onChange={e => setFiltre(e.target.value)} style={{ ...inputStyle, width: 'auto', padding: '10px 14px' }}>
-            {['Tous', ...STATUTS].map(s => <option key={s}>{s}</option>)}
+          <select value={filtreStatut} onChange={e=>setFiltreStatut(e.target.value)} style={{...inputStyle,width:'auto',padding:'9px 14px'}}>
+            {['Tous',...STATUTS].map(s=><option key={s}>{s}</option>)}
           </select>
         }
       />
 
-      {/* Stats rapides */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        {stats.map(s => (
-          <div key={s.label} onClick={() => setFiltre(s.label === filtre ? 'Tous' : s.label)}
-            style={{ background: '#fff', border: `1px solid ${filtre === s.label ? '#C2117A' : '#E4DDD6'}`, borderRadius: 10, padding: '8px 16px', cursor: 'pointer', fontSize: 13 }}>
-            <Badge value={s.label} /> <strong style={{ marginLeft: 6 }}>{s.count}</strong>
+      {/* KPIs */}
+      <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap'}}>
+        {[
+          {l:'En attente', v:prods.filter(p=>p.statut==='En attente').length, bg:'#FEF3E2', c:'#D4780A'},
+          {l:'En production', v:stats.enCours, bg:'#E5EDF8', c:'#2A5FA5'},
+          {l:'Terminé', v:prods.filter(p=>p.statut==='Terminé').length, bg:'#F0E8F8', c:'#7B2FA5'},
+          {l:'Livré', v:stats.livre, bg:'#E8F7EE', c:'#2D7A4E'},
+          {l:'En retard ⚠️', v:stats.retard, bg:'#FDE8E8', c:'#D14343'},
+        ].map(k=>(
+          <div key={k.l} style={{background:k.bg,borderRadius:12,padding:'10px 18px',textAlign:'center' as const,minWidth:90}}>
+            <div style={{fontSize:24,fontWeight:900,color:k.c,lineHeight:1}}>{k.v}</div>
+            <div style={{fontSize:11,fontWeight:700,color:k.c,marginTop:3}}>{k.l}</div>
           </div>
         ))}
       </div>
 
-      <TableWrap minWidth={920}>
+      <TableWrap minWidth={1000}>
         <thead><tr>
-          {['Date', 'Caractéristique', 'Client', 'Format', 'Qté', 'Type', 'Livraison', 'Statut', ''].map(h => <th key={h} style={th}>{h}</th>)}
+          {['Date','Client','Caractéristique','Type','Format','Qté','Statut','Livraison','Actions'].map(h=><th key={h} style={th}>{h}</th>)}
         </tr></thead>
         <tbody>
           {filtered.map(p => {
-            const retard = p.date_livraison_prevue && new Date(p.date_livraison_prevue) < new Date() && p.statut !== 'Livré'
+            const enRetard = p.date_livraison_prevue && p.date_livraison_prevue < today() && p.statut !== 'Livré'
+            const sc = STATUT_STYLE[p.statut] || {bg:'#F0EEEC',color:'#7A736C'}
             return (
-              <tr key={p.id}>
-                <td style={{ ...td, whiteSpace: 'nowrap', fontSize: 12 }}>{formatDateFR(p.date)}</td>
-                <td style={td}>
-                  <div style={{ fontWeight: 600, fontSize: 13, maxWidth: 280 }}>{p.caracteristique.slice(0, 60)}{p.caracteristique.length > 60 ? '…' : ''}</div>
-                  <div style={{ fontSize: 11, color: '#7A736C', marginTop: 2 }}>
-                    {p.recto_verso ? 'R/V' : 'Recto'}{p.nb_pages ? ` · ${p.nb_pages}p` : ''}{p.finition ? ` · ${p.finition}` : ''}
+              <tr key={p.id} style={{background: enRetard ? '#FFF5F5' : undefined}}>
+                <td style={{...td,fontSize:12,whiteSpace:'nowrap' as const}}>{formatDateFR(p.date)}</td>
+                <td style={{...td,fontWeight:600,fontSize:13}}>
+                  {p.clients?.nom||'—'}
+                  {p.devis && <div style={{fontSize:10,color:'#2A5FA5'}}>📋 {(p.devis as {numero:string}).numero}</div>}
+                </td>
+                <td style={{...td,maxWidth:200}}>
+                  <div style={{fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
+                    {p.caracteristique.slice(0,50)}{p.caracteristique.length>50?'…':''}
                   </div>
+                  {p.numero_bl && <div style={{fontSize:10,color:'#2D7A4E',marginTop:2}}>✅ {p.numero_bl}</div>}
                 </td>
-                <td style={{ ...td, fontSize: 12 }}>{p.clients?.nom || '—'}</td>
-                <td style={{ ...td, fontSize: 12, whiteSpace: 'nowrap' }}>{p.format || '—'}</td>
-                <td style={{ ...td, fontWeight: 700 }}>{p.quantite?.toLocaleString('fr-FR')}</td>
-                <td style={{ ...td, fontSize: 12 }}>{p.types_impression?.libelle || '—'}</td>
-                <td style={{ ...td, fontSize: 12, whiteSpace: 'nowrap', color: retard ? '#D14343' : '#7A736C', fontWeight: retard ? 700 : 400 }}>
-                  {p.date_livraison_prevue ? formatDateFR(p.date_livraison_prevue) : '—'}{retard ? ' ⚠️' : ''}
-                </td>
+                <td style={{...td,fontSize:11,color:'#7A736C'}}>{p.types_impression?.libelle||'—'}</td>
+                <td style={{...td,fontSize:12}}>{p.format||'—'}</td>
+                <td style={{...td,fontWeight:700}}>{p.quantite?.toLocaleString('fr-FR')}</td>
                 <td style={td}>
-                  <select value={p.statut}
-                    onChange={e => updateStatut(p, e.target.value)}
-                    style={{ fontSize: 11, fontWeight: 600, padding: '4px 8px', borderRadius: 8, border: '1px solid #E4DDD6', cursor: 'pointer', background: '#fff', fontFamily: 'inherit' }}>
-                    {STATUTS.map(s => <option key={s}>{s}</option>)}
+                  <select value={p.statut} onChange={e=>changeStatut(p,e.target.value)}
+                    style={{fontSize:11,fontWeight:700,padding:'3px 8px',borderRadius:999,border:'none',cursor:'pointer',background:sc.bg,color:sc.color,fontFamily:'inherit'}}>
+                    {STATUTS.map(s=><option key={s} value={s}>{s}</option>)}
                   </select>
                 </td>
-                <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <BtnIcon onClick={() => openView(p)} title="Détail"><Eye size={16} /></BtnIcon>
-                  <BtnIcon onClick={() => openEdit(p)} title="Modifier"><Pencil size={16} /></BtnIcon>
-                  <BtnIcon onClick={() => del(p)} danger title="Supprimer"><Trash2 size={16} /></BtnIcon>
+                <td style={{...td,fontSize:12}}>
+                  {enRetard ? <span style={{color:'#D14343',fontWeight:700}}>⚠️ {formatDateFR(p.date_livraison_prevue)}</span>
+                    : formatDateFR(p.date_livraison_prevue||null)}
+                </td>
+                <td style={{...td,textAlign:'right' as const}}>
+                  <div style={{display:'flex',gap:2,justifyContent:'flex-end'}}>
+                    <BtnIcon onClick={()=>openEdit(p)} title="Modifier"><Pencil size={14}/></BtnIcon>
+                    <BtnIcon title="Bon de livraison" onClick={()=>{setSel(p);setBlNum(p.numero_bl||'');setModal('bl')}}>
+                      <PackageCheck size={14} style={{color:'#2D7A4E'}}/>
+                    </BtnIcon>
+                    <BtnIcon onClick={()=>del(p)} danger title="Supprimer"><Trash2 size={14}/></BtnIcon>
+                  </div>
                 </td>
               </tr>
             )
           })}
-          {filtered.length === 0 && <EmptyRow text="Aucun ordre de production." cols={9} />}
+          {filtered.length===0 && <EmptyRow text="Aucun ordre de production." cols={9}/>}
         </tbody>
       </TableWrap>
 
-      {modal === 'create' && <Modal title="Nouvel ordre de production" onClose={() => { setModal(null); setError('') }} wide>{FormContent}</Modal>}
-      {modal === 'edit' && sel && <Modal title={`Modifier — ${sel.caracteristique.slice(0, 40)}`} onClose={() => { setModal(null); setSel(null); setError('') }} wide>{FormContent}</Modal>}
+      {(modal==='create'||modal==='edit') && (
+        <Modal title={modal==='edit'?`Modifier — ${sel?.caracteristique.slice(0,30)}…`:'Nouvel ordre de production'} onClose={close} wide>
+          <FormBody/>
+        </Modal>
+      )}
 
-      {modal === 'view' && sel && (
-        <Modal title="Détail de production" onClose={() => { setModal(null); setSel(null) }} wide>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-            {[
-              ['Date', formatDateFR(sel.date)],
-              ['Nature', sel.nature],
-              ['Client', sel.clients?.nom || '—'],
-              ['Type', sel.types_impression?.libelle || '—'],
-              ['Format', sel.format || '—'],
-              ['Quantité', sel.quantite?.toLocaleString('fr-FR')],
-              ['Papier', sel.papier || '—'],
-              ['Finition', sel.finition || '—'],
-              ['Recto-verso', sel.recto_verso ? 'Oui' : 'Non'],
-              ['Nb pages', sel.nb_pages?.toString() || '—'],
-              ['Livraison prévue', sel.date_livraison_prevue ? formatDateFR(sel.date_livraison_prevue) : '—'],
-              ['Statut', sel.statut],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: '#7A736C', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 3 }}>{label}</div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{value}</div>
-              </div>
-            ))}
+      {modal==='bl' && sel && (
+        <Modal title={`Bon de livraison — ${sel.clients?.nom||'—'}`} onClose={close}>
+          <div style={{background:'#E8F7EE',borderRadius:10,padding:'12px 16px',marginBottom:16,fontSize:13}}>
+            <div style={{fontWeight:700,marginBottom:4}}>{sel.caracteristique.slice(0,80)}</div>
+            <div style={{color:'#7A736C'}}>Qté : {sel.quantite?.toLocaleString('fr-FR')} · Format : {sel.format||'—'}</div>
+            {sel.devis && <div style={{color:'#2A5FA5',marginTop:4}}>📋 Réf. devis : {(sel.devis as {numero:string}).numero}</div>}
           </div>
-          <div style={{ background: '#F6F4F1', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#7A736C', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>Caractéristique</div>
-            <div style={{ fontSize: 14, lineHeight: 1.6 }}>{sel.caracteristique}</div>
-          </div>
-          {sel.notes && (
-            <div style={{ background: '#FEF3E2', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#7A736C', textTransform: 'uppercase', letterSpacing: '.3px', marginBottom: 6 }}>Notes</div>
-              <div style={{ fontSize: 14 }}>{sel.notes}</div>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            {STATUTS.map(s => s !== sel.statut && (
-              <BtnGhost key={s} onClick={() => { updateStatut(sel, s); setModal(null) }}>→ {s}</BtnGhost>
-            ))}
+          <Field label="Numéro de BL (auto si vide)">
+            <input style={inputStyle} value={blNum} onChange={e=>setBlNum(e.target.value)}
+              placeholder={`BL-${new Date().getFullYear()}-001`} />
+          </Field>
+          <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:8}}>
+            <BtnGhost onClick={close}>Annuler</BtnGhost>
+            <BtnPrimary onClick={saveBL}>
+              <Printer size={15}/> Générer & Imprimer le BL
+            </BtnPrimary>
           </div>
         </Modal>
       )}
