@@ -93,7 +93,7 @@ export default function ProductionClient({
   const importDevis = (devisId: string) => {
     const d = devis.find(dv => dv.id === devisId)
     if (!d) return
-    const caract = d.devis_lignes.map(l => `${l.designation} ×${l.qte}`).join(' / ')
+    const caract = (d.devis_lignes || []).map((l: {designation:string;qte:number}) => `${l.designation} ×${l.qte}`).join(' / ')
     f('devis_id', devisId)
     f('client_id', '') // sera sélectionné via le devis
     if (caract) f('caracteristique', caract.slice(0, 200))
@@ -373,7 +373,7 @@ export default function ProductionClient({
                 <td style={{...td,fontSize:12,whiteSpace:'nowrap' as const}}>{formatDateFR(p.date)}</td>
                 <td style={{...td,fontWeight:600,fontSize:13}}>
                   {p.clients?.nom||'—'}
-                  {p.devis && <div style={{fontSize:10,color:'#2A5FA5'}}>📋 {(p.devis as {numero:string}).numero}</div>}
+                  {p.devis && (p.devis as {numero?:string})?.numero && <div style={{fontSize:10,color:'#2A5FA5'}}>📋 {(p.devis as {numero:string}).numero}</div>}
                 </td>
                 <td style={{...td,maxWidth:200}}>
                   <div style={{fontSize:13,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' as const}}>
