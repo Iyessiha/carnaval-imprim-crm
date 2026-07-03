@@ -55,7 +55,7 @@ const PERMS_DEFAUT: Record<Role, Record<string, boolean>> = {
 // ── Composant principal ────────────────────────────────────────────
 export default function ParametresClient({
   entreprise: initial, fneConfig: initialFne,
-  profiles: initialProfiles, currentUserId, isAdmin
+  profiles: initialProfiles, currentUserId, isAdmin: isAdminProp
 }: {
   entreprise: Record<string, unknown> | null
   fneConfig: Record<string, unknown> | null
@@ -65,6 +65,24 @@ export default function ParametresClient({
 }) {
   const [tab, setTab] = useState<'entreprise' | 'fne' | 'users'>('entreprise')
   const [profiles, setProfiles] = useState<Profile[]>(initialProfiles)
+  // Vérification côté client — plus fiable que le prop serveur
+  const [isAdmin, setIsAdmin] = useState(isAdminProp)
+  
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const sb = getSupabase()
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) return
+      const { data: profil } = await sb.from('profiles')
+        .select('role, actif')
+        .eq('id', user.id)
+        .single()
+      if (profil?.role === 'Admin' && profil?.actif) {
+        setIsAdmin(true)
+      }
+    }
+    checkAdmin()
+  }, [])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState('')
   const [error, setError] = useState('')
