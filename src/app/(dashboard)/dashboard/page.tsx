@@ -13,7 +13,6 @@ export default async function DashboardPage() {
     { data: devis },
     { data: productions },
     { data: clients },
-    { data: charges },
     { data: entData },
     { data: caisse },
   ] = await Promise.all([
@@ -21,10 +20,16 @@ export default async function DashboardPage() {
     supabase.from('devis').select('id, statut, date'),
     supabase.from('productions').select('id, statut, caracteristique, format, quantite, date_livraison_prevue, clients(nom)'),
     supabase.from('clients').select('id, created_at'),
-    supabase.from('charges_fixes').select('*').eq('actif', true).order('prochaine_echeance'),
     supabase.from('entreprise').select('nom, taux_tva').single(),
     supabase.from('caisse_operations').select('type, montant, date').gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10)),
   ])
+
+  // Charges fixes — query séparée avec fallback silencieux
+  let charges: {id:string;libelle:string;montant:number;frequence:string;prochaine_echeance:string|null;actif:boolean}[] = []
+  try {
+    const { data: chargesData } = await supabase.from('charges_fixes').select('*').eq('actif', true).order('prochaine_echeance')
+    charges = chargesData || []
+  } catch { charges = [] }
 
   const ent = entData as { nom: string; taux_tva: number } | null
   const tva = ent?.taux_tva ?? 18
@@ -45,7 +50,7 @@ export default async function DashboardPage() {
 
   const devisData = devis || []
   const prodData = productions || []
-  const chgsData: {id:string;libelle:string;montant:number;frequence:string;prochaine_echeance:string|null}[] = charges || []
+  const chgsData = charges
   const caisseData: {type:string;montant:number;date:string}[] = caisse || []
 
   // Caisse du mois
