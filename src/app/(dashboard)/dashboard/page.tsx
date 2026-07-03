@@ -45,8 +45,8 @@ export default async function DashboardPage() {
 
   const devisData = devis || []
   const prodData = productions || []
-  const chgsData = charges || []
-  const caisseData = caisse || []
+  const chgsData: {id:string;libelle:string;montant:number;frequence:string;prochaine_echeance:string|null}[] = charges || []
+  const caisseData: {type:string;montant:number;date:string}[] = caisse || []
 
   // Caisse du mois
   const entreesMois = caisseData.filter((c:any)=>c.type==='entree').reduce((s:number,c:any)=>s+c.montant,0)
