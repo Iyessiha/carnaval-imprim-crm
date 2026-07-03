@@ -261,7 +261,7 @@ ${f.fne_certifiee && f.qr_code_url ? `<div class="fne-box">✅ Facture certifié
         </Field>
       </div>
       <div style={{ marginBottom: 14 }}>
-        <LignesEditor lignes={form.factures_lignes || []} onChange={l => setF('factures_lignes', l)} produits={produits} />
+        <LignesEditor lignes={form.factures_lignes || []} onChange={l => setF('factures_lignes', l)} produits={produits} tarifs={tarifs} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, alignItems: 'center' }}>
         <Field label="Remise (FCFA)"><input type="number" min="0" style={inputStyle} value={form.remise || 0} onChange={e => setF('remise', Number(e.target.value))} /></Field>
