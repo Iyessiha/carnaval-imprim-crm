@@ -13,6 +13,7 @@ const STATUTS = ['En attente', 'En production', 'Terminé', 'Livré'] as const
 const NATURES = ['PRODUCTION', 'SOUS-TRAITANCE', 'ECHANTILLON'] as const
 const FORMATS = ['A6','A5','A4','A3','A2','A1','A0','8,5×5,5 cm','10×21 cm','21×21 cm','15×21 cm','Personnalisé']
 const FINITIONS = ['Sans pelliculage','Soft touch','Pelliculage brillant','Vernis sélectif','Avec œillets','Avec structure']
+const MOTIFS_SOUS_TRAITANCE = ['Vernis sélectif', 'Surplus de quantité', 'Impression offset', 'Autre'] as const
 
 const STATUT_STYLE: Record<string,{bg:string;color:string}> = {
   'En attente':    { bg:'#FEF3E2', color:'#D4780A' },
@@ -24,6 +25,7 @@ const STATUT_STYLE: Record<string,{bg:string;color:string}> = {
 type DevisRef = { id: string; numero: string; statut: string; clients: {nom:string}|null; devis_lignes: {designation:string;qte:number}[] }
 type TypeImp = { id: string; libelle: string }
 type Client = { id: string; nom: string; telephone?: string; adresse?: string }
+type Fournisseur = { id: string; nom: string }
 type Production = {
   id: string; date: string; nature: string; caracteristique: string
   type_impression_id: string|null; format: string|null; quantite: number
@@ -31,7 +33,10 @@ type Production = {
   client_id: string|null; devis_id: string|null; numero_bl: string|null
   notes: string|null; created_at: string; recto_verso: boolean
   finition: string|null; nb_pages: number|null; papier: string|null
+  stock_verifie: boolean; bat_valide_client: boolean
+  sous_traitant_id: string|null; motif_sous_traitance: string|null
   clients: {nom:string}|null; types_impression: {libelle:string}|null; devis?: {numero:string}|null
+  fournisseurs?: {nom:string}|null
 }
 
 type F = {
@@ -40,6 +45,8 @@ type F = {
   finition: string; nb_pages: string; papier: string
   date: string; date_livraison_prevue: string
   client_id: string; devis_id: string; notes: string
+  stock_verifie: boolean; bat_valide_client: boolean
+  sous_traitant_id: string; motif_sous_traitance: string
 }
 
 const emptyF = (): F => ({
@@ -48,13 +55,15 @@ const emptyF = (): F => ({
   finition: 'Sans pelliculage', nb_pages: '', papier: '',
   date: today(), date_livraison_prevue: '',
   client_id: '', devis_id: '', notes: '',
+  stock_verifie: false, bat_valide_client: false,
+  sous_traitant_id: '', motif_sous_traitance: '',
 })
 
 export default function ProductionClient({
-  productions: init, clients, devis, types, entreprise
+  productions: init, clients, devis, types, entreprise, fournisseurs
 }: {
   productions: Production[]; clients: Client[]; devis: DevisRef[]
-  types: TypeImp[]; entreprise: Record<string,string>|null
+  types: TypeImp[]; entreprise: Record<string,string>|null; fournisseurs: Fournisseur[]
 }) {
   const [prods, setProds] = useState<Production[]>(init)
   const [q, setQ] = useState('')
@@ -84,6 +93,8 @@ export default function ProductionClient({
       nb_pages: String(p.nb_pages||''), papier: p.papier||'',
       date: p.date, date_livraison_prevue: p.date_livraison_prevue||'',
       client_id: p.client_id||'', devis_id: p.devis_id||'', notes: p.notes||'',
+      stock_verifie: p.stock_verifie||false, bat_valide_client: p.bat_valide_client||false,
+      sous_traitant_id: p.sous_traitant_id||'', motif_sous_traitance: p.motif_sous_traitance||'',
     })
     setError(''); setModal('edit')
   }
@@ -120,6 +131,10 @@ export default function ProductionClient({
       client_id: form.client_id || null,
       devis_id: form.devis_id || null,
       notes: form.notes || null,
+      stock_verifie: form.stock_verifie,
+      bat_valide_client: form.bat_valide_client,
+      sous_traitant_id: form.nature === 'SOUS-TRAITANCE' ? (form.sous_traitant_id || null) : null,
+      motif_sous_traitance: form.nature === 'SOUS-TRAITANCE' ? (form.motif_sous_traitance || null) : null,
     }
 
     if (modal === 'edit' && sel) {
@@ -127,9 +142,10 @@ export default function ProductionClient({
       if (e) { setError(e.message); setSaving(false); return }
       const cli = clients.find(c => c.id === form.client_id)
       const typ = types.find(t => t.id === form.type_impression_id)
-      setProds(prev => prev.map(p => p.id === sel.id ? { ...p, ...body, clients: cli ? {nom:cli.nom} : p.clients, types_impression: typ ? {libelle:typ.libelle} : p.types_impression } : p))
+      const four = fournisseurs.find(fr => fr.id === form.sous_traitant_id)
+      setProds(prev => prev.map(p => p.id === sel.id ? { ...p, ...body, clients: cli ? {nom:cli.nom} : p.clients, types_impression: typ ? {libelle:typ.libelle} : p.types_impression, fournisseurs: four ? {nom:four.nom} : p.fournisseurs } : p))
     } else {
-      const { data, error: e } = await sb.from('productions').insert(body).select('*, clients(nom), types_impression(libelle)').single()
+      const { data, error: e } = await sb.from('productions').insert(body).select('*, clients(nom), types_impression(libelle), fournisseurs(nom)').single()
       if (e) { setError(e.message); setSaving(false); return }
       setProds(prev => [data as Production, ...prev])
     }
@@ -315,6 +331,41 @@ export default function ProductionClient({
         </Field>
       </div>
 
+      {/* Vérification stock/machine avant de lancer le BAT */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,background:'#F6F4F1',borderRadius:10,padding:'10px 14px',marginTop:4}}>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+          <input type="checkbox" checked={form.stock_verifie} onChange={e=>f('stock_verifie',e.target.checked)} />
+          📦 Stock papier/encre & machine vérifiés
+        </label>
+        <label style={{display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+          <input type="checkbox" checked={form.bat_valide_client} onChange={e=>f('bat_valide_client',e.target.checked)} />
+          ✅ BAT validé par le client
+        </label>
+      </div>
+      {!form.stock_verifie && (
+        <div style={{fontSize:11.5,color:'#D4780A',marginTop:4}}>
+          ⚠️ Stock/machine pas encore vérifiés — si papier, encre ou pièces manquent, fais un bon de commande fournisseur avant de lancer le BAT.
+        </div>
+      )}
+
+      {/* Sous-traitance : uniquement si nature = SOUS-TRAITANCE */}
+      {form.nature === 'SOUS-TRAITANCE' && (
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginTop:10}}>
+          <Field label="Sous-traitant">
+            <select style={inputStyle} value={form.sous_traitant_id} onChange={e=>f('sous_traitant_id',e.target.value)}>
+              <option value="">— Sélectionner —</option>
+              {fournisseurs.map(fr=><option key={fr.id} value={fr.id}>{fr.nom}</option>)}
+            </select>
+          </Field>
+          <Field label="Motif de la sous-traitance">
+            <select style={inputStyle} value={form.motif_sous_traitance} onChange={e=>f('motif_sous_traitance',e.target.value)}>
+              <option value="">— Sélectionner —</option>
+              {MOTIFS_SOUS_TRAITANCE.map(m=><option key={m} value={m}>{m}</option>)}
+            </select>
+          </Field>
+        </div>
+      )}
+
       <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:8}}>
         <BtnGhost onClick={close}>Annuler</BtnGhost>
         <BtnPrimary onClick={save} disabled={saving}>
@@ -380,6 +431,15 @@ export default function ProductionClient({
                     {p.caracteristique.slice(0,50)}{p.caracteristique.length>50?'…':''}
                   </div>
                   {p.numero_bl && <div style={{fontSize:10,color:'#2D7A4E',marginTop:2}}>✅ {p.numero_bl}</div>}
+                  {p.nature === 'SOUS-TRAITANCE' && (
+                    <div style={{fontSize:10,color:'#7B2FA5',marginTop:2}}>
+                      🤝 {p.fournisseurs?.nom||'Sous-traitant non défini'}{p.motif_sous_traitance?` · ${p.motif_sous_traitance}`:''}
+                    </div>
+                  )}
+                  <div style={{fontSize:10,marginTop:2,display:'flex',gap:6}}>
+                    <span style={{color:p.stock_verifie?'#2D7A4E':'#B0A89F'}} title="Stock/machine vérifiés">📦 {p.stock_verifie?'OK':'à vérifier'}</span>
+                    <span style={{color:p.bat_valide_client?'#2D7A4E':'#B0A89F'}} title="BAT validé par le client">✅ {p.bat_valide_client?'BAT validé':'BAT en attente'}</span>
+                  </div>
                 </td>
                 <td style={{...td,fontSize:11,color:'#7A736C'}}>{p.types_impression?.libelle||'—'}</td>
                 <td style={{...td,fontSize:12}}>{p.format||'—'}</td>
