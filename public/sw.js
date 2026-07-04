@@ -1,4 +1,4 @@
-const CACHE = 'carnaval-crm-v1'
+const CACHE = 'carnaval-crm-v2'
 const OFFLINE_URL = '/login'
 
 // Assets à mettre en cache au démarrage
@@ -35,18 +35,33 @@ self.addEventListener('fetch', (event) => {
   if (url.hostname.includes('supabase.co')) return
   if (url.pathname.startsWith('/api/')) return
 
-  // Network first pour les pages dashboard (toujours à jour)
-  if (url.pathname.startsWith('/dashboard') ||
-      url.pathname.startsWith('/clients') ||
-      url.pathname.startsWith('/devis') ||
-      url.pathname.startsWith('/factures')) {
+  // Navigation de page (n'importe quelle route de l'app) : toujours le
+  // réseau en premier, pour ne jamais servir une page obsolète après un
+  // déploiement. Repli sur la page de login en cache si vraiment hors-ligne.
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match(OFFLINE_URL) || fetch(request))
+      fetch(request).catch(() => caches.match(OFFLINE_URL))
     )
     return
   }
 
-  // Cache first pour les assets statiques
+  // Fichiers de build Next.js (JS/CSS) : réseau en premier aussi, avec le
+  // cache seulement comme repli hors-ligne (évite de rejouer un vieux
+  // bundle qui ne correspond plus à la page HTML fraîchement servie).
+  if (url.pathname.startsWith('/_next/')) {
+    event.respondWith(
+      fetch(request).then(response => {
+        if (response.ok) {
+          const clone = response.clone()
+          caches.open(CACHE).then(cache => cache.put(request, clone))
+        }
+        return response
+      }).catch(() => caches.match(request))
+    )
+    return
+  }
+
+  // Assets statiques (logo, icônes, manifest) : cache d'abord, c'est stable.
   event.respondWith(
     caches.match(request).then(cached => {
       if (cached) return cached
