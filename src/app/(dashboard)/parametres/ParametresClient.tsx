@@ -18,14 +18,13 @@ type Profile = {
   derniere_connexion?: string; created_at: string
 }
 
-const ROLES = ['Admin', 'Commercial', 'Production', 'Comptabilité'] as const
+const ROLES = ['Admin', 'Secrétaire/Comptable', 'Production'] as const
 type Role = typeof ROLES[number]
 
 const ROLE_COLORS: Record<Role, { bg: string; color: string }> = {
-  'Admin':         { bg: '#FDE8E8', color: '#D14343' },
-  'Commercial':    { bg: '#E5EDF8', color: '#2A5FA5' },
-  'Production':    { bg: '#F0E8F8', color: '#7B2FA5' },
-  'Comptabilité':  { bg: '#FEF3E2', color: '#D4780A' },
+  'Admin':                { bg: '#FDE8E8', color: '#D14343' },
+  'Secrétaire/Comptable': { bg: '#E5EDF8', color: '#2A5FA5' },
+  'Production':           { bg: '#F0E8F8', color: '#7B2FA5' },
 }
 
 const MODULES = [
@@ -46,10 +45,10 @@ const MODULES = [
 ]
 
 const PERMS_DEFAUT: Record<Role, Record<string, boolean>> = {
-  'Admin':         Object.fromEntries(MODULES.map(m => [m.key, true])),
-  'Commercial':    { clients:true, devis:true, factures:true, relances:true, production:false, livraisons:true, bons:false, catalogue:true, fournisseurs:false, comptabilite:false, caisse:false, 'bons-caisse':false, stats:true, parametres:false },
-  'Production':    { clients:false, devis:false, factures:false, relances:false, production:true, livraisons:true, bons:true, catalogue:true, fournisseurs:true, comptabilite:false, caisse:false, 'bons-caisse':false, stats:false, parametres:false },
-  'Comptabilité':  { clients:true, devis:true, factures:true, relances:true, production:false, livraisons:false, bons:false, catalogue:false, fournisseurs:true, comptabilite:true, caisse:true, 'bons-caisse':true, stats:true, parametres:false },
+  'Admin':                Object.fromEntries(MODULES.map(m => [m.key, true])),
+  // Fusion des anciens accès Commercial + Comptabilité : un même poste fait les deux
+  'Secrétaire/Comptable': { clients:true, devis:true, factures:true, relances:true, production:false, livraisons:true, bons:false, catalogue:true, fournisseurs:true, comptabilite:true, caisse:true, 'bons-caisse':true, stats:true, parametres:false },
+  'Production':           { clients:false, devis:false, factures:false, relances:false, production:true, livraisons:true, bons:true, catalogue:true, fournisseurs:true, comptabilite:false, caisse:false, 'bons-caisse':false, stats:false, parametres:false },
 }
 
 // ── Composant principal ────────────────────────────────────────────
@@ -116,7 +115,7 @@ export default function ParametresClient({
   })
 
   // ── Formulaire utilisateur ─────────────────────────────────────
-  const emptyUser = { nom: '', email: '', password: '', role: 'Commercial' as Role, poste: '', telephone: '' }
+  const emptyUser = { nom: '', email: '', password: '', role: 'Secrétaire/Comptable' as Role, poste: '', telephone: '' }
   const [formUser, setFormUser] = useState(emptyUser)
   const [newPwd, setNewPwd] = useState('')
   const [permEdit, setPermEdit] = useState<Record<string, boolean>>({})
