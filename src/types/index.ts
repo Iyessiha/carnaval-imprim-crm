@@ -1,6 +1,6 @@
 // ── Types métier Carnaval Imprim CRM ───────────────────────────
 
-export type Role = 'Admin' | 'Commercial' | 'Production' | 'Comptabilité'
+export type Role = 'Admin' | 'Secrétaire/Comptable' | 'Production'
 
 export type TypeClient = 'Entreprise' | 'Institution' | 'ONG' | 'Particulier'
 
