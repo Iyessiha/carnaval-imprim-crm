@@ -8,7 +8,7 @@ import Modal from '@/components/ui/Modal'
 import PageHeader from '@/components/ui/PageHeader'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
-import LignesEditor, { type Ligne } from '@/components/ui/LignesEditor'
+import LignesEditor, { type Ligne, type Tarif } from '@/components/ui/LignesEditor'
 import TotauxBox from '@/components/ui/TotauxBox'
 import { Eye, Pencil, Trash2, Wallet, Check, Printer, QrCode } from 'lucide-react'
 
@@ -28,8 +28,8 @@ type Client = { id: string; nom: string; ncc?: string; template_fne_defaut: stri
 type Produit = { id: string; nom: string; prix_base: number; unite: string }
 type Entreprise = { nom: string; forme?: string; siege: string; tel: string; email: string; rc: string; ncc: string; taux_tva: number; fne_point_of_sale?: string; fne_establishment?: string } | null
 
-export default function FacturesClient({ factures: initial, clients, produits, entreprise }: {
-  factures: Facture[]; clients: Client[]; produits: Produit[]; entreprise: Entreprise
+export default function FacturesClient({ factures: initial, clients, produits, tarifs = [], entreprise }: {
+  factures: Facture[]; clients: Client[]; produits: Produit[]; tarifs?: Tarif[]; entreprise: Entreprise
 }) {
   const router = useRouter()
   const tva = entreprise?.taux_tva ?? 18
