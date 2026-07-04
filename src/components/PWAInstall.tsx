@@ -16,6 +16,16 @@ export default function PWAInstall() {
     // Enregistrer le service worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch(() => {})
+
+      // Recharger automatiquement dès qu'une nouvelle version prend le
+      // contrôle, pour ne jamais rester bloqué sur du code obsolète
+      // après un déploiement.
+      let refreshing = false
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (refreshing) return
+        refreshing = true
+        window.location.reload()
+      })
     }
 
     // Détecter si déjà installé
