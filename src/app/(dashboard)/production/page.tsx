@@ -10,12 +10,14 @@ export default async function ProductionPage() {
     { data: devis },
     { data: types },
     { data: entData },
+    { data: fournisseurs },
   ] = await Promise.all([
-    supabase.from('productions').select('*, clients(nom,telephone,adresse), types_impression(libelle)').order('created_at', { ascending: false }),
+    supabase.from('productions').select('*, clients(nom,telephone,adresse), types_impression(libelle), fournisseurs(nom)').order('created_at', { ascending: false }),
     supabase.from('clients').select('id, nom, telephone, adresse').order('nom'),
     supabase.from('devis').select('id, numero, statut, clients(nom), devis_lignes(designation,qte)').eq('statut','Accepté').order('created_at', { ascending: false }),
     supabase.from('types_impression').select('id, libelle').order('libelle'),
     supabase.from('entreprise').select('nom, siege, tel, rc, ncc').single(),
+    supabase.from('fournisseurs').select('id, nom').order('nom'),
   ])
   return (
     <ProductionClient
@@ -24,6 +26,7 @@ export default async function ProductionPage() {
       devis={devis||[]}
       types={types||[]}
       entreprise={entData as Record<string,string>|null}
+      fournisseurs={fournisseurs||[]}
     />
   )
 }
