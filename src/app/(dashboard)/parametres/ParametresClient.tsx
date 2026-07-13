@@ -177,14 +177,13 @@ export default function ParametresClient({
   // ── Créer utilisateur ─────────────────────────────────────────
   const createUser = async () => {
     if (!formUser.nom.trim())   { setError('Le nom est obligatoire.'); return }
-    if (!formUser.email.trim()) { setError("L'email est obligatoire."); return }
     if (!formUser.password || formUser.password.length < 8) {
       setError('Le mot de passe doit faire au moins 8 caractères.'); return
     }
     setSaving(true); setError('')
     const sb = getSupabase()
     const { data: newId, error: e } = await sb.rpc('create_user_with_profile', {
-      p_email:     formUser.email.trim().toLowerCase(),
+      p_email:     formUser.email.trim() ? formUser.email.trim().toLowerCase() : null,
       p_password:  formUser.password,
       p_nom:       formUser.nom.trim(),
       p_role:      formUser.role,
@@ -621,8 +620,8 @@ export default function ParametresClient({
             <Field label="Nom complet *">
               <input style={inputStyle} value={formUser.nom} onChange={e => setFormUser(p => ({ ...p, nom: e.target.value }))} placeholder="Ex: Kouadio Jean" autoFocus />
             </Field>
-            <Field label="Adresse email *">
-              <input type="email" style={inputStyle} value={formUser.email} onChange={e => setFormUser(p => ({ ...p, email: e.target.value }))} placeholder="jean@carnavalimprim.ci" />
+            <Field label="Adresse email">
+              <input type="email" style={inputStyle} value={formUser.email} onChange={e => setFormUser(p => ({ ...p, email: e.target.value }))} placeholder="jean@carnavalimprim.ci (facultatif — généré si vide)" />
             </Field>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
