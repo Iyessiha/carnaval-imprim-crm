@@ -105,7 +105,7 @@ ${b.notes ? `<p style="margin-top:16px;background:#F6F4F1;padding:10px;border-ra
 
   const openCreate = () => { setError(''); setForm(emptyForm); setModal('create') }
   const openEdit = (b: Bon) => {
-    setError(); setSel(b)
+    setError(''); setSel(b)
     setForm({ fournisseur_id: b.fournisseur_id, date: b.date, statut: b.statut, notes: b.notes||'', lignes: b.bons_commande_lignes?.length ? b.bons_commande_lignes : [{ designation:'', qte:1, pu:0, unite:'unité' }] })
     setModal('edit')
   }

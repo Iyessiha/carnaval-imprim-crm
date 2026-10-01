@@ -13,14 +13,15 @@ export default async function ParametresPage() {
   if (!user) redirect('/login')
 
   // 2. Lire son profil directement par id (plus fiable que getUser seul)
-  const { data: monProfil } = await supabase
+  const { data: monProfilRaw } = await supabase
     .from('profiles')
     .select('role, actif')
     .eq('id', user.id)
     .single()
+  const monProfil = monProfilRaw as { role: string; actif: boolean } | null
 
   // 3. isAdmin : vérifié en base, pas depuis le JWT
-  const isAdmin = monProfil?.role === 'Admin' && monProfil?.actif === true
+  const isAdmin = monProfil ? monProfil.role === 'Admin' && monProfil.actif === true : false
 
   // 4. Charger les autres données en parallèle
   const [

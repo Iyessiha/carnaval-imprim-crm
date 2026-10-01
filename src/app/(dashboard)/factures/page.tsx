@@ -19,7 +19,7 @@ export default async function FacturesPage() {
     supabase.from('entreprise').select('nom, siege, tel, email, rc, ncc, taux_tva, fne_point_of_sale, fne_establishment').single(),
     supabase.from('fne_config').select('*').limit(1).maybeSingle(),
   ])
-  const ent = entData as Record<string,string|number>|null
+  const ent = entData as { nom: string; forme?: string; siege: string; tel: string; email: string; rc: string; ncc: string; taux_tva: number; fne_point_of_sale?: string; fne_establishment?: string } | null
   const fne = fneData as Record<string,string>|null
-  return <FacturesClient factures={factures||[]} clients={clients||[]} produits={produits||[]} tarifs={tarifs||[]} tauxTva={Number(ent?.taux_tva??18)} entreprise={ent} fneConfig={fne} />
+  return <FacturesClient factures={factures||[]} clients={clients||[]} produits={produits||[]} tarifs={tarifs||[]} entreprise={ent} />
 }

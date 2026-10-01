@@ -8,7 +8,7 @@ import Modal from '@/components/ui/Modal'
 import PageHeader from '@/components/ui/PageHeader'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
-import LignesEditor, { type Ligne } from '@/components/ui/LignesEditor'
+import LignesEditor, { type Ligne, type Tarif } from '@/components/ui/LignesEditor'
 import TotauxBox from '@/components/ui/TotauxBox'
 import { Eye, Pencil, Trash2, Receipt, Check, Printer, Copy } from 'lucide-react'
 
@@ -25,7 +25,7 @@ type Produit = { id: string; nom: string; prix_base: number; unite: string }
 type Entreprise = { nom: string; siege: string; tel: string; email: string; rc: string; ncc: string; taux_tva: number } | null
 
 export default function DevisClient({ devis: initial, clients, produits, tarifs = [], tauxTva, entreprise }: {
-  devis: Devis[]; clients: Client[]; produits: Produit[]; tauxTva: number; entreprise?: Entreprise
+  devis: Devis[]; clients: Client[]; produits: Produit[]; tarifs?: Tarif[]; tauxTva: number; entreprise?: Entreprise
 }) {
   const router = useRouter()
   const [devis, setDevis] = useState(initial)
