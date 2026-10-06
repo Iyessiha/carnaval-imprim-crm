@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatDateFR } from '@/lib/utils'
@@ -18,6 +18,7 @@ type Fournisseur = {
 export default function FournisseursClient({ fournisseurs: initial }: { fournisseurs: Fournisseur[] }) {
   const router = useRouter()
   const [fournisseurs, setFournisseurs] = useState(initial)
+  useEffect(() => { setFournisseurs(initial) }, [initial])
   const [q, setQ] = useState('')
   const [modal, setModal] = useState<'create' | 'edit' | null>(null)
   const [sel, setSel] = useState<Fournisseur | null>(null)

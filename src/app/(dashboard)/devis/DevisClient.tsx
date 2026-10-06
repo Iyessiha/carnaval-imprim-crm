@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatFCFA, formatDateFR, calculerTotaux, today } from '@/lib/utils'
@@ -29,6 +29,7 @@ export default function DevisClient({ devis: initial, clients, produits, tarifs 
 }) {
   const router = useRouter()
   const [devis, setDevis] = useState(initial)
+  useEffect(() => { setDevis(initial) }, [initial])
   const [q, setQ] = useState('')
   const [filtre, setFiltre] = useState('Tous')
   const [modal, setModal] = useState<'create' | 'edit' | 'view' | null>(null)

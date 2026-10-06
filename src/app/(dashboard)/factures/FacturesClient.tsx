@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatFCFA, formatDateFR, calculerTotaux, statutPaiement, today } from '@/lib/utils'
@@ -34,6 +34,7 @@ export default function FacturesClient({ factures: initial, clients, produits, t
   const router = useRouter()
   const tva = entreprise?.taux_tva ?? 18
   const [factures, setFactures] = useState(initial)
+  useEffect(() => { setFactures(initial) }, [initial])
   const [q, setQ] = useState('')
   const [filtre, setFiltre] = useState('Toutes')
   const [modal, setModal] = useState<'create'|'edit'|'view'|'pay'|null>(null)

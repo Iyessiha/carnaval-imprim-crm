@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatFCFA, formatDateFR, today } from '@/lib/utils'
@@ -48,6 +48,8 @@ export default function CaisseClient({ operations: initial, ouvertures: initOuv,
 
   const [operations, setOperations] = useState(initial)
   const [ouvertures, setOuvertures] = useState(initOuv)
+  useEffect(() => { setOperations(initial) }, [initial])
+  useEffect(() => { setOuvertures(initOuv) }, [initOuv])
   const [moisFiltre, setMoisFiltre] = useState(moisActuel)
   const [anneeFiltre, setAnneeFiltre] = useState(annee)
   const [modal, setModal] = useState<'entree'|'sortie'|'ouverture'|null>(null)

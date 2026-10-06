@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatFCFA, formatDateFR, today } from '@/lib/utils'
@@ -23,6 +23,7 @@ type Fournisseur = { id: string; nom: string }
 export default function BonsClient({ bons: initial, fournisseurs, tauxTva = 18 }: { bons: Bon[]; fournisseurs: Fournisseur[]; tauxTva?: number }) {
   const router = useRouter()
   const [bons, setBons] = useState(initial)
+  useEffect(() => { setBons(initial) }, [initial])
   const [q, setQ] = useState('')
   const [modal, setModal] = useState<'create'|'edit'|'view'|null>(null)
   const [sel, setSel] = useState<Bon | null>(null)

@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatFCFA } from '@/lib/utils'
@@ -38,6 +38,7 @@ export default function CatalogueClient({ produits: initial, types }: {
 }) {
   const router = useRouter()
   const [produits, setProduits] = useState(initial)
+  useEffect(() => { setProduits(initial) }, [initial])
   const [q, setQ] = useState('')
   const [filtreCat, setFiltreCat] = useState('Tous')
   const [filtreActif, setFiltreActif] = useState('Actifs')

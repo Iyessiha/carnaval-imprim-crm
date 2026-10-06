@@ -1,5 +1,5 @@
 'use client'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatFCFA, formatDateFR, calculerTotaux, today } from '@/lib/utils'
@@ -70,6 +70,7 @@ export default function ComptaClient({ depenses: initialDep, factures, paiements
   const annee = new Date().getFullYear()
 
   const [depenses, setDepenses] = useState(initialDep)
+  useEffect(() => { setDepenses(initialDep) }, [initialDep])
   const [tab, setTab] = useState<'dashboard'|'recettes'|'depenses'|'tva'|'journal'|'bilan'>('dashboard')
   const [moisFiltre, setMoisFiltre] = useState(new Date().getMonth())
   const [anneeFiltre, setAnneeFiltre] = useState(annee)
