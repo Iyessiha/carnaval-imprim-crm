@@ -31,16 +31,19 @@ export default function LignesEditor({
   produits?: { id: string; nom: string; prix_base: number; unite: string }[]
   tarifs?: Tarif[]
 }) {
-  const [suggestions, setSuggestions] = useState<Tarif[]>([])
+  const [suggestions, setSuggestions] = useState<(Tarif & { fromProduit?: boolean })[]>([])
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
   const [query, setQuery] = useState('')
   const dropRef = useRef<HTMLDivElement>(null)
 
-  const allItems: Tarif[] = [
+  // `fromProduit` : seuls les vrais produits ont un id valide pour la clé étrangère
+  // produit_id (→ table produits). Les tarifs d'impression n'en ont pas.
+  type Item = Tarif & { fromProduit?: boolean }
+  const allItems: Item[] = [
     ...tarifs,
     ...produits.map(p => ({
       id: p.id, categorie: 'Produit', designation: p.nom,
-      prix_unitaire: p.prix_base, unite: p.unite,
+      prix_unitaire: p.prix_base, unite: p.unite, fromProduit: true,
     })),
   ]
 
@@ -68,9 +71,9 @@ export default function LignesEditor({
     }
   }
 
-  const pick = (i: number, t: Tarif) => {
+  const pick = (i: number, t: Tarif & { fromProduit?: boolean }) => {
     onChange(lignes.map((l, j) => j === i
-      ? { ...l, designation: t.designation, pu: t.prix_unitaire, produit_id: t.id }
+      ? { ...l, designation: t.designation, pu: Number(t.prix_unitaire) || 0, produit_id: t.fromProduit ? t.id : undefined }
       : l
     ))
     setSuggestions([])

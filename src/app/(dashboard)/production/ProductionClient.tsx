@@ -243,7 +243,7 @@ export default function ProductionClient({
     if (w) { w.document.write(html); w.document.close(); setTimeout(()=>w.print(),400) }
   }
 
-  const FormBody = () => (
+  const FormBody = (
     <div>
       {error && <div style={{background:'#FDE8E8',color:'#D14343',padding:'10px 14px',borderRadius:10,marginBottom:12,fontSize:13}}>{error}</div>}
 
@@ -472,7 +472,7 @@ export default function ProductionClient({
 
       {(modal==='create'||modal==='edit') && (
         <Modal title={modal==='edit'?`Modifier — ${sel?.caracteristique.slice(0,30)}…`:'Nouvel ordre de production'} onClose={close} wide>
-          <FormBody/>
+          {FormBody}
         </Modal>
       )}
 

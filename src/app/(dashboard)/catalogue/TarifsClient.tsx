@@ -87,7 +87,7 @@ export default function TarifsClient({ tarifs: init }: { tarifs: Tarif[] }) {
     setTarifs(prev => prev.filter(x => x.id !== t.id))
   }
 
-  const FormBody = () => (
+  const FormBody = (
     <div>
       {error && <div style={{ background:'#FDE8E8',color:'#D14343',padding:'10px 14px',borderRadius:10,marginBottom:14,fontSize:13 }}>{error}</div>}
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
@@ -192,7 +192,7 @@ export default function TarifsClient({ tarifs: init }: { tarifs: Tarif[] }) {
 
       {modal && (
         <Modal title={modal==='edit' ? `Modifier — ${sel?.designation}` : 'Nouveau tarif'} onClose={close}>
-          <FormBody />
+          {FormBody}
         </Modal>
       )}
     </div>

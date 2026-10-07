@@ -50,30 +50,58 @@ export default function DevisClient({ devis: initial, clients, produits, tarifs 
   const [form, setForm] = useState<Partial<Devis>>(emptyForm)
   const setF = (k: string, v: unknown) => setForm(p => ({ ...p, [k]: v }))
 
-  const openCreate = () => { setError(''); setForm(emptyForm); setModal('create') }
+  const openCreate = () => { setError(''); setSel(null); setForm(emptyForm); setModal('create') }
   const openEdit = (d: Devis) => { setError(''); setSel(d); setForm({ ...d }); setModal('edit') }
   const openView = (d: Devis) => { setSel(d); setModal('view') }
 
+  // Lignes prêtes à insérer. produit_id n'est conservé que s'il existe vraiment
+  // dans `produits` (clé étrangère) — un tarif d'impression n'a pas d'id produit.
+  const lignesPayload = (devisId: string, lignes: Ligne[]) =>
+    (lignes || [])
+      .filter(l => l.designation?.trim())
+      .map((l, i) => ({
+        devis_id: devisId,
+        designation: l.designation.trim(),
+        qte: Number(l.qte) || 1,
+        pu: Number(l.pu) || 0,
+        remise_ligne: Number(l.remise_ligne) || 0,
+        produit_id: l.produit_id && produits.some(p => p.id === l.produit_id) ? l.produit_id : null,
+        ordre: i,
+      }))
+
   const save = async () => {
     if (!form.client_id) { setError('Sélectionnez un client.'); return }
+    const { devis_lignes, clients: _c, ...body } = form as Devis & { clients: unknown }
+    if (!(devis_lignes || []).some(l => l.designation?.trim())) {
+      setError('Ajoutez au moins une prestation avec une désignation.'); return
+    }
     setLoading(true); setError('')
     const sb = getSupabase()
-    const { devis_lignes, clients: _c, ...body } = form as Devis & { clients: unknown }
+    const cNom = clients.find(c => c.id === form.client_id)?.nom || ''
+
     if (sel?.id) {
       const { error: e } = await sb.from('devis').update(body).eq('id', sel.id)
       if (e) { setError(e.message); setLoading(false); return }
-      await sb.from('devis_lignes').delete().eq('devis_id', sel.id)
-      const lignesValides = (devis_lignes||[]).filter((l: Ligne) => l.designation?.trim())
-    if (lignesValides.length) await sb.from('devis_lignes').insert(lignesValides.map((l: Ligne, i: number) => ({ designation: l.designation, qte: l.qte||1, pu: l.pu||0, remise_ligne: l.remise_ligne||0, produit_id: l.produit_id||null, devis_id: sel.id, ordre: i })))
-      const cNom = clients.find(c => c.id === form.client_id)?.nom || ''
+      // On insère d'abord les nouvelles lignes, puis on supprime les anciennes :
+      // si l'insertion échoue, le devis garde ses lignes d'origine.
+      const { data: anciennes } = await sb.from('devis_lignes').select('id').eq('devis_id', sel.id)
+      const { error: eL } = await sb.from('devis_lignes').insert(lignesPayload(sel.id, devis_lignes || []))
+      if (eL) { setError('Lignes non enregistrées : ' + eL.message); setLoading(false); return }
+      const ids = ((anciennes || []) as { id: string }[]).map(a => a.id)
+      if (ids.length) {
+        const { error: eD } = await sb.from('devis_lignes').delete().in('id', ids)
+        if (eD) { setError('Anciennes lignes non supprimées : ' + eD.message); setLoading(false); return }
+      }
       setDevis(prev => prev.map(d => d.id === sel.id ? { ...d, ...form, devis_lignes: devis_lignes || [], clients: { nom: cNom } } as Devis : d))
     } else {
       const { data: numero } = await sb.rpc('next_numero', { p_type: 'DV', p_annee: new Date().getFullYear() })
       const { data: created, error: e } = await sb.from('devis').insert({ ...body, numero }).select().single()
       if (e) { setError(e.message); setLoading(false); return }
-      const lignesValides2 = (devis_lignes||[]).filter((l: Ligne) => l.designation?.trim())
-    if (lignesValides2.length) await sb.from('devis_lignes').insert(lignesValides2.map((l: Ligne, i: number) => ({ designation: l.designation, qte: l.qte||1, pu: l.pu||0, remise_ligne: l.remise_ligne||0, produit_id: l.produit_id||null, devis_id: created.id, ordre: i })))
-      const cNom = clients.find(c => c.id === form.client_id)?.nom || ''
+      const { error: eL } = await sb.from('devis_lignes').insert(lignesPayload(created.id, devis_lignes || []))
+      if (eL) {
+        await sb.from('devis').delete().eq('id', created.id)   // pas de devis vide orphelin
+        setError('Lignes non enregistrées : ' + eL.message); setLoading(false); return
+      }
       setDevis(prev => [{ ...created, devis_lignes: devis_lignes || [], clients: { nom: cNom } } as Devis, ...prev])
     }
     setLoading(false); setModal(null); setSel(null); router.refresh()
@@ -98,7 +126,13 @@ export default function DevisClient({ devis: initial, clients, produits, tarifs 
       template_fne: client?.template_fne_defaut || 'B2B', payment_method_fne: 'cash',
     }).select().single()
     if (e) { alert(e.message); setLoading(false); return }
-    if (d.devis_lignes?.length) await sb.from('factures_lignes').insert(d.devis_lignes.map((l: Ligne, i: number) => ({ ...l, facture_id: facture.id, taxes: ['TVA'], ordre: i })))
+    if (d.devis_lignes?.length) {
+      const { error: eL } = await sb.from('factures_lignes').insert(d.devis_lignes.map((l: Ligne, i: number) => ({
+        facture_id: facture.id, designation: l.designation, qte: l.qte, pu: l.pu,
+        remise_ligne: l.remise_ligne || 0, produit_id: l.produit_id || null, taxes: ['TVA'], ordre: i,
+      })))
+      if (eL) { alert('Facture créée mais lignes non copiées : ' + eL.message); setLoading(false); return }
+    }
     await sb.from('devis').update({ statut: 'Accepté' }).eq('id', d.id)
     setDevis(prev => prev.map(x => x.id === d.id ? { ...x, statut: 'Accepté' } : x))
     setLoading(false); setModal(null)
@@ -114,7 +148,10 @@ export default function DevisClient({ devis: initial, clients, produits, tarifs 
       statut: 'Brouillon', remise: d.remise, tva_applicable: d.tva_applicable, notes: d.notes,
     }).select().single()
     if (e) { alert(e.message); setLoading(false); return }
-    if (d.devis_lignes?.length) await sb.from('devis_lignes').insert(d.devis_lignes.map((l: Ligne, i: number) => ({ ...l, devis_id: created.id, ordre: i })))
+    if (d.devis_lignes?.length) {
+      const { error: eL } = await sb.from('devis_lignes').insert(lignesPayload(created.id, d.devis_lignes))
+      if (eL) { alert('Duplication incomplète : ' + eL.message); setLoading(false); return }
+    }
     const cNom = clients.find(c => c.id === d.client_id)?.nom || ''
     setDevis(prev => [{ ...created, devis_lignes: d.devis_lignes || [], clients: { nom: cNom } } as Devis, ...prev])
     setLoading(false); router.refresh()
@@ -313,7 +350,7 @@ ${d.notes ? `<div class="notes"><strong>Notes :</strong> ${d.notes}</div>` : ''}
         </tbody>
       </TableWrap>
 
-      {modal === 'create' && <Modal title="Nouveau devis" onClose={() => { setModal(null); setError('') }} wide>{FormContent}</Modal>}
+      {modal === 'create' && <Modal title="Nouveau devis" onClose={() => { setModal(null); setSel(null); setError('') }} wide>{FormContent}</Modal>}
       {modal === 'edit' && sel && <Modal title={`Modifier — ${sel.numero}`} onClose={() => { setModal(null); setSel(null); setError('') }} wide>{FormContent}</Modal>}
       {modal === 'view' && sel && (
         <Modal title={`Devis ${sel.numero}`} onClose={() => { setModal(null); setSel(null) }} wide>
