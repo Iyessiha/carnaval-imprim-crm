@@ -6,7 +6,7 @@ export default async function LivraisonsPage() {
   const supabase = await createClient()
   const [{ data: productions }, { data: entData }] = await Promise.all([
     supabase.from('productions')
-      .select('id, date, caracteristique, format, quantite, statut, numero_bl, date_livraison_reelle, date_livraison_prevue, client_id, devis_id, clients(nom, adresse, telephone), devis(numero)')
+      .select('id, date, caracteristique, format, quantite, statut, numero_bl, date_livraison_reelle, date_livraison_prevue, client_id, devis_id, facture_id, clients(nom, adresse, telephone), devis(numero), factures(numero)')
       .order('created_at', { ascending: false }),
     supabase.from('entreprise').select('nom, siege, tel, rc, ncc').single(),
   ])

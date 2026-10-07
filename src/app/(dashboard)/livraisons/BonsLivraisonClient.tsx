@@ -1,17 +1,20 @@
 'use client'
 import { useState, useMemo } from 'react'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatDateFR, today } from '@/lib/utils'
 import PageHeader from '@/components/ui/PageHeader'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { inputStyle } from '@/components/ui/index'
-import { Printer, CheckCircle } from 'lucide-react'
+import { Printer, Receipt } from 'lucide-react'
 
 type Production = {
   id: string; caracteristique: string; format: string|null; quantite: number
   date: string; statut: string; numero_bl: string|null
   date_livraison_prevue: string|null; date_livraison_reelle: string|null
-  client_id: string|null; devis_id: string|null
+  client_id: string|null; devis_id: string|null; facture_id?: string|null
+  factures?: { numero?: string }|null
   clients: { nom: string; adresse?: string; telephone?: string }|null
   devis?: { numero?: string }|null
 }
@@ -24,6 +27,9 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
   const [filtre, setFiltre] = useState('Tous')
   const [numBL, setNumBL] = useState<Record<string,string>>({})
   const [saving, setSaving] = useState<string|null>(null)
+  const [facturing, setFacturing] = useState<string|null>(null)
+  const [liees, setLiees] = useState<Record<string,string>>({}) // production.id -> numéro de facture
+  const router = useRouter()
 
   const filtered = useMemo(() => productions
     .filter(p => filtre === 'Tous' || p.statut === filtre)
@@ -37,6 +43,66 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
     await sb.from('productions').update({ numero_bl: num, statut: 'Livré', date_livraison_reelle: today() }).eq('id', p.id)
     setSaving(null)
     imprimerBL(p, num)
+  }
+
+
+  // Génère la facture à partir du bon de livraison (copie du devis lié), comme l'ordre de prod. depuis le devis
+  const facturer = async (p: Production) => {
+    if (!p.devis_id) {
+      alert("Cet ordre n'est lié à aucun devis : impossible de reprendre les prix automatiquement.\nCréez la facture depuis la page Factures, ou liez d'abord un devis à l'ordre de production.")
+      return
+    }
+    setFacturing(p.id)
+    const sb = getSupabase()
+    try {
+      // 1) Une facture existe-t-elle déjà pour ce devis ? Alors on la lie au lieu d'en créer une seconde.
+      const { data: existante } = await sb.from('factures').select('id, numero').eq('devis_id', p.devis_id).eq('is_avoir', false).limit(1).maybeSingle()
+      if (existante) {
+        const { error: eL } = await sb.from('productions').update({ facture_id: existante.id }).eq('id', p.id)
+        if (eL) { alert(eL.message); return }
+        setLiees(prev => ({ ...prev, [p.id]: existante.numero }))
+        alert(`Une facture existe déjà pour ce devis : ${existante.numero}.\nLe bon de livraison y a été rattaché (pas de doublon).`)
+        router.refresh(); return
+      }
+      if (!confirm(`Créer la facture de « ${p.clients?.nom||'—'} » à partir du devis ${p.devis?.numero||''} ?`)) return
+
+      // 2) Lire le devis et ses lignes
+      const { data: d, error: eD } = await sb.from('devis').select('*, devis_lignes(*)').eq('id', p.devis_id).single()
+      if (eD || !d) { alert('Devis introuvable : ' + (eD?.message||'')); return }
+      const lignes = ((d.devis_lignes || []) as { designation: string; qte: number; pu: number; remise_ligne?: number; produit_id?: string|null; ordre?: number }[])
+        .filter(l => l.designation).sort((a, b) => (a.ordre||0) - (b.ordre||0))
+      if (lignes.length === 0) { alert('Le devis ne contient aucune ligne.'); return }
+
+      // 3) Créer la facture
+      const { data: cli } = await sb.from('clients').select('template_fne_defaut').eq('id', d.client_id).maybeSingle()
+      const { data: num } = await sb.rpc('next_numero', { p_type: 'FA', p_annee: new Date().getFullYear() })
+      const { data: facture, error: eF } = await sb.from('factures').insert({
+        numero: num, client_id: d.client_id, devis_id: d.id, date: today(),
+        remise: d.remise, tva_applicable: d.tva_applicable,
+        notes: [d.notes, p.numero_bl ? `Bon de livraison ${p.numero_bl}` : ''].filter(Boolean).join(' — ') || null,
+        template_fne: cli?.template_fne_defaut || 'B2B', payment_method_fne: 'cash',
+      }).select().single()
+      if (eF || !facture) { alert(eF?.message || 'Création de la facture impossible'); return }
+
+      // 4) Copier les lignes (si échec : on annule la facture pour ne pas laisser une facture vide)
+      const { error: eLg } = await sb.from('factures_lignes').insert(lignes.map((l, i) => ({
+        facture_id: facture.id, designation: l.designation, qte: Number(l.qte)||0, pu: Number(l.pu)||0,
+        remise_ligne: Number(l.remise_ligne)||0, produit_id: l.produit_id || null, taxes: ['TVA'], ordre: i,
+      })))
+      if (eLg) {
+        await sb.from('factures').delete().eq('id', facture.id)
+        alert('Lignes non copiées, facture annulée : ' + eLg.message); return
+      }
+
+      // 5) Lier le bon de livraison à la facture et marquer le devis accepté
+      await sb.from('productions').update({ facture_id: facture.id }).eq('id', p.id)
+      await sb.from('devis').update({ statut: 'Accepté' }).eq('id', d.id)
+      setLiees(prev => ({ ...prev, [p.id]: facture.numero }))
+      alert(`✅ Facture ${facture.numero} créée à partir du bon de livraison.`)
+      router.refresh()
+    } finally {
+      setFacturing(null)
+    }
   }
 
   const imprimerBL = (p: Production, numero: string) => {
@@ -138,12 +204,12 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
 
       <div style={{ background:'#E5EDF8', borderRadius:12, padding:'10px 16px', marginBottom:16, fontSize:13, display:'flex', gap:10, alignItems:'center' }}>
         <span style={{fontSize:18}}>💡</span>
-        <span>Saisissez un N° de BL (facultatif) puis cliquez sur <strong>Livrer & Imprimer</strong> pour marquer comme livré et générer le bon signable.</span>
+        <span>Saisissez un N° de BL (facultatif) puis cliquez sur <strong>Livrer & BL</strong> pour marquer comme livré et générer le bon signable. Une fois livré, <strong>Facturer</strong> crée la facture à partir du devis lié.</span>
       </div>
 
-      <TableWrap minWidth={980}>
+      <TableWrap minWidth={1080}>
         <thead><tr>
-          {['Date','Client','Réf. devis','Caractéristique','Format','Qté','Statut','N° BL','Actions'].map(h=><th key={h} style={th}>{h}</th>)}
+          {['Date','Client','Réf. devis','Caractéristique','Format','Qté','Statut','N° BL','Facture','Actions'].map(h=><th key={h} style={th}>{h}</th>)}
         </tr></thead>
         <tbody>
           {filtered.map(p => (
@@ -174,6 +240,19 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
                       placeholder="BL-2026-001" style={{ ...inputStyle, padding:'5px 8px', width:120, fontSize:11 }} />
                 }
               </td>
+              <td style={td}>
+                {(() => {
+                  const numFa = liees[p.id] || p.factures?.numero
+                  if (numFa) return <Link href="/factures" style={{ color:'#2A5FA5', fontWeight:700, fontSize:12, textDecoration:'none' }}>🧾 {numFa}</Link>
+                  if (p.statut !== 'Livré') return <span style={{ color:'#B0A89F', fontSize:11 }}>après livraison</span>
+                  return (
+                    <button onClick={()=>facturer(p)} disabled={facturing===p.id}
+                      style={{ display:'inline-flex', alignItems:'center', gap:5, background:'#2A5FA5', color:'#fff', border:'none', padding:'6px 10px', borderRadius:9, fontSize:11.5, fontWeight:700, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap' as const }}>
+                      <Receipt size={12}/> {facturing===p.id?'…':'Facturer'}
+                    </button>
+                  )
+                })()}
+              </td>
               <td style={{ ...td, textAlign:'right' as const }}>
                 {p.statut !== 'Livré'
                   ? <button onClick={()=>marquerLivre(p)} disabled={saving===p.id}
@@ -188,7 +267,7 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
               </td>
             </tr>
           ))}
-          {filtered.length===0 && <EmptyRow text="Aucun ordre de production." cols={9}/>}
+          {filtered.length===0 && <EmptyRow text="Aucun ordre de production." cols={10}/>}
         </tbody>
       </TableWrap>
     </div>
