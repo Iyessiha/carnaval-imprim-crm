@@ -8,7 +8,7 @@ import {
   Printer, PackageCheck, ShoppingCart, Package,
   Truck, Calculator, Banknote, Wallet,
   BarChart3, Settings, LogOut,
-  AlertCircle, Menu, X, TrendingDown
+  AlertCircle, Menu, X, TrendingDown, Boxes
 } from 'lucide-react'
 
 const nav = [
@@ -26,6 +26,7 @@ const nav = [
   { href: '/fournisseurs', label: 'Fournisseurs',      icon: Truck },
   { divider: 'Référentiel' },
   { href: '/catalogue',    label: 'Tarifs impression', icon: Package },
+  { href: '/produits',     label: 'Produits',          icon: Boxes },
   { divider: 'Finances' },
   { href: '/caisse',       label: 'Caisse',            icon: Banknote },
   { href: '/bons-caisse',  label: 'Bons de caisse',    icon: Wallet },
