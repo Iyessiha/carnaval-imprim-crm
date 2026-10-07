@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import { formatFCFA, calculerTotaux, formatDateFR } from '@/lib/utils'
 import Link from 'next/link'
+import { montantMensuel } from '@/lib/charges'
 
 export const metadata = { title: 'Tableau de bord — Carnaval Imprim' }
 
@@ -61,14 +62,8 @@ export default async function DashboardPage() {
   const retards = prodData.filter((p:any) => p.date_livraison_prevue && p.date_livraison_prevue < now && p.statut !== 'Livré')
   const enCours = prodData.filter((p:any) => p.statut === 'En production')
 
-  // Charges dues ce mois
-  const chargesAVenir = chgsData.filter((c:any) => {
-    if (!c.prochaine_echeance) return true
-    const d = new Date(c.prochaine_echeance)
-    const now_ = new Date()
-    return d.getFullYear() === now_.getFullYear() && d.getMonth() === now_.getMonth()
-  })
-  const totalChargesMois = chargesAVenir.reduce((s:number,c:any)=>s+c.montant,0)
+  // Charges fixes : toutes les charges actives, ramenées au mois (annuelle ÷ 12, etc.)
+  const totalChargesMois = Math.round(chgsData.reduce((s:number,c:any)=>s+montantMensuel(c.montant, c.frequence),0))
 
   const Card = ({ title, value, sub, color, href }: { title:string; value:string; sub?:string; color:string; href?:string }) => (
     <div style={{ background:'#fff', border:'1px solid #E4DDD6', borderRadius:14, padding:20, borderLeft:`4px solid ${color}`, position:'relative' }}>
@@ -103,7 +98,7 @@ export default async function DashboardPage() {
         <Card title="Entrées" value={formatFCFA(entreesMois)} sub="Ce mois" color="#2D7A4E" href="/caisse" />
         <Card title="Sorties" value={formatFCFA(sortiesMois)} sub="Ce mois" color="#D14343" href="/caisse" />
         <Card title="Solde caisse" value={formatFCFA(entreesMois-sortiesMois)} sub="Solde net" color={entreesMois-sortiesMois>=0?"#2D7A4E":"#D14343"} href="/caisse" />
-        <Card title="Charges fixes / mois" value={formatFCFA(totalChargesMois)} sub={`${chgsData.length} charges actives`} color="#F39200" />
+        <Card title="Charges fixes / mois" value={formatFCFA(totalChargesMois)} sub={`${chgsData.length} charges actives`} color="#F39200" href="/charges" />
       </div>
 
       {/* ── Production ── */}
@@ -116,13 +111,14 @@ export default async function DashboardPage() {
       </div>
 
       {/* ── Charges fixes ── */}
-      {chgsData.length > 0 && (
+      {(
         <div style={{ background:'#fff', border:'1px solid #E4DDD6', borderRadius:14, padding:20, marginBottom:24 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
             <div style={{ fontSize:14, fontWeight:800 }}>📋 Charges fixes mensuelles</div>
-            <Link href="/parametres" style={{ fontSize:12, color:'#C2117A', textDecoration:'none', fontWeight:600 }}>Gérer →</Link>
+            <Link href="/charges" style={{ fontSize:12, color:'#C2117A', textDecoration:'none', fontWeight:600 }}>Gérer →</Link>
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {chgsData.length === 0 && <div style={{ fontSize:13, color:'#7A736C', padding:'8px 12px' }}>Aucune charge fixe enregistrée. Cliquez sur « Gérer » pour en ajouter.</div>}
             {chgsData.map((c:any) => (
               <div key={c.id} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:'#F6F4F1', borderRadius:10 }}>
                 <div>
@@ -140,7 +136,7 @@ export default async function DashboardPage() {
               </div>
             ))}
             <div style={{ display:'flex', justifyContent:'flex-end', padding:'8px 12px 0', borderTop:'1px solid #E4DDD6', marginTop:4 }}>
-              <span style={{ fontSize:13, fontWeight:800 }}>Total mensuel : {formatFCFA(chgsData.reduce((s:number,c:any)=>s+c.montant,0))}</span>
+              <span style={{ fontSize:13, fontWeight:800 }}>Total mensuel : {formatFCFA(totalChargesMois)}</span>
             </div>
           </div>
         </div>

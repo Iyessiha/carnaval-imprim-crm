@@ -8,7 +8,7 @@ import {
   Printer, PackageCheck, ShoppingCart, Package,
   Truck, Calculator, Banknote, Wallet,
   BarChart3, Settings, LogOut,
-  AlertCircle, Menu, X, TrendingDown, Boxes
+  AlertCircle, Menu, X, TrendingDown, Boxes, CalendarClock
 } from 'lucide-react'
 
 const nav = [
@@ -29,6 +29,7 @@ const nav = [
   { href: '/produits',     label: 'Produits',          icon: Boxes },
   { divider: 'Finances' },
   { href: '/caisse',       label: 'Caisse',            icon: Banknote },
+  { href: '/charges',     label: 'Charges fixes',     icon: CalendarClock },
   { href: '/bons-caisse',  label: 'Bons de caisse',    icon: Wallet },
   { href: '/comptabilite', label: 'Comptabilité',      icon: Calculator },
   { divider: 'Rapports' },
