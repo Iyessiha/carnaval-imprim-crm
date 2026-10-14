@@ -193,9 +193,10 @@ export default function ParametresClient({
     if (e) { setError(e.message); setSaving(false); return }
 
     // Appliquer les permissions par défaut du rôle
-    await sb.from('profiles').update({
+    const { error: eP } = await sb.from('profiles').update({
       permissions: PERMS_DEFAUT[formUser.role],
     }).eq('id', newId)
+    if (eP) { setError('Utilisateur créé mais permissions par défaut non appliquées : ' + eP.message) }
 
     await refreshProfiles()
     setSaving(false)

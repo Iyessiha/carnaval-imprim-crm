@@ -37,6 +37,12 @@ export default function BonsClient({ bons: initial, fournisseurs, tauxTva = 18 }
 
   const totalBon = (lignes: Ligne[]) => lignes.reduce((s, l) => s + l.qte * l.pu, 0)
 
+  const lignesPayload = (bonId: string, lignes: Ligne[]) =>
+    lignes.filter(l => l.designation && l.designation.trim()).map((l, i) => ({
+      bon_commande_fournisseur_id: bonId, designation: l.designation.trim(),
+      qte: Number(l.qte) || 0, pu: Number(l.pu) || 0, unite: l.unite || 'unité', ordre: i,
+    }))
+
   const save = async () => {
     if (!form.fournisseur_id) { setError('Sélectionnez un fournisseur.'); return }
     setLoading(true); setError('')
@@ -45,15 +51,33 @@ export default function BonsClient({ bons: initial, fournisseurs, tauxTva = 18 }
     if (sel?.id) {
       const { error: e } = await sb.from('bons_commande_fournisseurs').update(body).eq('id', sel.id)
       if (e) { setError(e.message); setLoading(false); return }
-      await sb.from('bons_commande_lignes').delete().eq('bon_commande_fournisseur_id', sel.id)
-      if (form.lignes.length) await sb.from('bons_commande_lignes').insert(form.lignes.filter(l => l.designation).map((l, i) => ({ ...l, bon_commande_fournisseur_id: sel.id, ordre: i })))
+      // Insérer les nouvelles lignes avant de supprimer les anciennes (rien n'est perdu si ça échoue)
+      const { data: anciennes } = await sb.from('bons_commande_lignes').select('id').eq('bon_commande_fournisseur_id', sel.id)
+      const nouvelles = lignesPayload(sel.id, form.lignes)
+      if (nouvelles.length) {
+        const { error: eL } = await sb.from('bons_commande_lignes').insert(nouvelles)
+        if (eL) { setError('Lignes non enregistrées (anciennes lignes conservées) : ' + eL.message); setLoading(false); return }
+      }
+      const ids = ((anciennes || []) as { id: string }[]).map(a => a.id)
+      if (ids.length) {
+        const { error: eD } = await sb.from('bons_commande_lignes').delete().in('id', ids)
+        if (eD) { setError('Anciennes lignes non supprimées : ' + eD.message); setLoading(false); return }
+      }
       const fNom = fournisseurs.find(f => f.id === form.fournisseur_id)?.nom || ''
       setBons(prev => prev.map(b => b.id === sel.id ? { ...b, ...body, bons_commande_lignes: form.lignes, fournisseurs: { nom: fNom } } : b))
     } else {
-      const { data: num } = await sb.rpc('next_numero', { p_type: 'BC', p_annee: new Date().getFullYear() })
+      const { data: num, error: eN } = await sb.rpc('next_numero', { p_type: 'BC', p_annee: new Date().getFullYear() })
+      if (eN || !num) { setError('Numéro de bon impossible à générer : ' + (eN?.message || 'réponse vide')); setLoading(false); return }
       const { data: created, error: e } = await sb.from('bons_commande_fournisseurs').insert({ ...body, numero: num }).select().single()
       if (e) { setError(e.message); setLoading(false); return }
-      if (form.lignes.length) await sb.from('bons_commande_lignes').insert(form.lignes.filter(l => l.designation).map((l, i) => ({ ...l, bon_commande_fournisseur_id: created.id, ordre: i })))
+      const lignes = lignesPayload(created.id, form.lignes)
+      if (lignes.length) {
+        const { error: eL } = await sb.from('bons_commande_lignes').insert(lignes)
+        if (eL) {
+          await sb.from('bons_commande_fournisseurs').delete().eq('id', created.id)
+          setError('Lignes non enregistrées, bon annulé : ' + eL.message); setLoading(false); return
+        }
+      }
       const fNom = fournisseurs.find(f => f.id === form.fournisseur_id)?.nom || ''
       setBons(prev => [{ ...created, bons_commande_lignes: form.lignes, fournisseurs: { nom: fNom } }, ...prev])
     }
@@ -63,13 +87,15 @@ export default function BonsClient({ bons: initial, fournisseurs, tauxTva = 18 }
   const del = async (b: Bon) => {
     if (!confirm(`Supprimer ${b.numero} ?`)) return
     const sb = getSupabase()
-    await sb.from('bons_commande_fournisseurs').delete().eq('id', b.id)
+    const { error: e } = await sb.from('bons_commande_fournisseurs').delete().eq('id', b.id)
+    if (e) { alert('Suppression impossible : ' + e.message); return }
     setBons(prev => prev.filter(x => x.id !== b.id)); router.refresh()
   }
 
   const updateStatut = async (b: Bon, statut: string) => {
     const sb = getSupabase()
-    await sb.from('bons_commande_fournisseurs').update({ statut }).eq('id', b.id)
+    const { error: e } = await sb.from('bons_commande_fournisseurs').update({ statut }).eq('id', b.id)
+    if (e) { alert('Changement de statut non enregistré : ' + e.message); return }
     setBons(prev => prev.map(x => x.id === b.id ? { ...x, statut } : x)); router.refresh()
   }
 

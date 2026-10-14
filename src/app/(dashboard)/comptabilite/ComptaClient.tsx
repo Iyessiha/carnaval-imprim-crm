@@ -177,7 +177,8 @@ export default function ComptaClient({ depenses: initialDep, factures, paiements
   const delDep = async (d: Depense) => {
     if (!confirm(`Supprimer "${d.libelle}" ?`)) return
     const sb = getSupabase()
-    await sb.from('depenses').delete().eq('id', d.id)
+    const { error: e } = await sb.from('depenses').delete().eq('id', d.id)
+    if (e) { alert('Suppression impossible : ' + e.message); return }
     setDepenses(prev => prev.filter(x => x.id !== d.id)); router.refresh()
   }
 

@@ -40,8 +40,10 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
     const num = numBL[p.id] || `BL-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`
     setSaving(p.id)
     const sb = getSupabase()
-    await sb.from('productions').update({ numero_bl: num, statut: 'Livré', date_livraison_reelle: today() }).eq('id', p.id)
+    const { error: e } = await sb.from('productions').update({ numero_bl: num, statut: 'Livré', date_livraison_reelle: today() }).eq('id', p.id)
     setSaving(null)
+    if (e) { alert('Livraison non enregistrée, bon non généré : ' + e.message); return }
+    router.refresh()
     imprimerBL(p, num)
   }
 

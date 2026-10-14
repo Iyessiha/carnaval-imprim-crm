@@ -76,14 +76,16 @@ export default function TarifsClient({ tarifs: init }: { tarifs: Tarif[] }) {
 
   const toggle = async (t: Tarif) => {
     const sb = getSupabase()
-    await sb.from('tarifs_impression').update({ actif: !t.actif }).eq('id', t.id)
+    const { error: e } = await sb.from('tarifs_impression').update({ actif: !t.actif }).eq('id', t.id)
+    if (e) { alert('Modification non enregistrée : ' + e.message); return }
     setTarifs(prev => prev.map(x => x.id === t.id ? { ...x, actif: !x.actif } : x))
   }
 
   const del = async (t: Tarif) => {
     if (!confirm(`Supprimer « ${t.designation} » ?`)) return
     const sb = getSupabase()
-    await sb.from('tarifs_impression').delete().eq('id', t.id)
+    const { error: e } = await sb.from('tarifs_impression').delete().eq('id', t.id)
+    if (e) { alert('Suppression impossible : ' + e.message); return }
     setTarifs(prev => prev.filter(x => x.id !== t.id))
   }
 

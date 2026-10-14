@@ -72,6 +72,16 @@ export default function FacturesClient({ factures: initial, clients, produits, t
     setSel(f); setPayForm({ date: today(), montant: Math.max(0, t.ttc - paye), mode: 'cash', reference: '' }); setModal('pay')
   }
 
+  // Lignes à enregistrer : champs explicites (pas de `...l` qui embarquerait id / facture_id),
+  // produit_id conservé seulement s'il existe vraiment dans les produits (clé étrangère).
+  const lignesPayload = (factureId: string, lignes: Ligne[]) =>
+    lignes.filter(l => l.designation && l.designation.trim()).map((l, i) => ({
+      facture_id: factureId, designation: l.designation.trim(),
+      qte: Number(l.qte) || 0, pu: Number(l.pu) || 0, remise_ligne: Number(l.remise_ligne) || 0,
+      produit_id: l.produit_id && produits.some(p => p.id === l.produit_id) ? l.produit_id : null,
+      taxes: ['TVA'], ordre: i,
+    }))
+
   const save = async () => {
     if (!form.client_id) { setError('Sélectionnez un client.'); return }
     setLoading(true); setError('')
@@ -80,14 +90,33 @@ export default function FacturesClient({ factures: initial, clients, produits, t
     if (sel?.id) {
       const { error: e } = await sb.from('factures').update(body).eq('id', sel.id)
       if (e) { setError(e.message); setLoading(false); return }
-      await sb.from('factures_lignes').delete().eq('facture_id', sel.id)
-      if (factures_lignes?.length) await sb.from('factures_lignes').insert(factures_lignes.map((l: Ligne, i: number) => ({ ...l, facture_id: sel.id, taxes: ['TVA'], ordre: i })))
+      // On insère les nouvelles lignes AVANT de supprimer les anciennes : si l'insertion
+      // échoue, la facture garde ses lignes d'origine (avant : lignes effacées pour rien).
+      const { data: anciennes } = await sb.from('factures_lignes').select('id').eq('facture_id', sel.id)
+      const nouvelles = lignesPayload(sel.id, factures_lignes || [])
+      if (nouvelles.length) {
+        const { error: eL } = await sb.from('factures_lignes').insert(nouvelles)
+        if (eL) { setError('Les lignes n\'ont pas pu être enregistrées (anciennes lignes conservées) : ' + eL.message); setLoading(false); return }
+      }
+      const ids = ((anciennes || []) as { id: string }[]).map(a => a.id)
+      if (ids.length) {
+        const { error: eD } = await sb.from('factures_lignes').delete().in('id', ids)
+        if (eD) { setError('Anciennes lignes non supprimées : ' + eD.message); setLoading(false); return }
+      }
       setFactures(prev => prev.map(f => f.id === sel.id ? { ...f, ...form, factures_lignes: factures_lignes || [] } as Facture : f))
     } else {
-      const { data: num } = await sb.rpc('next_numero', { p_type: 'FA', p_annee: new Date().getFullYear() })
+      const { data: num, error: eN } = await sb.rpc('next_numero', { p_type: 'FA', p_annee: new Date().getFullYear() })
+      if (eN || !num) { setError('Numéro de facture impossible à générer : ' + (eN?.message || 'réponse vide')); setLoading(false); return }
       const { data: created, error: e } = await sb.from('factures').insert({ ...body, numero: num }).select().single()
       if (e) { setError(e.message); setLoading(false); return }
-      if (factures_lignes?.length) await sb.from('factures_lignes').insert(factures_lignes.map((l: Ligne, i: number) => ({ ...l, facture_id: created.id, taxes: ['TVA'], ordre: i })))
+      const lignes = lignesPayload(created.id, factures_lignes || [])
+      if (lignes.length) {
+        const { error: eL } = await sb.from('factures_lignes').insert(lignes)
+        if (eL) {
+          await sb.from('factures').delete().eq('id', created.id) // pas de facture vide
+          setError('Lignes non enregistrées, facture annulée : ' + eL.message); setLoading(false); return
+        }
+      }
       const cNom = clients.find(c => c.id === form.client_id)?.nom || ''
       setFactures(prev => [{ ...created, factures_lignes: factures_lignes || [], paiements: [], clients: { nom: cNom } } as Facture, ...prev])
     }
@@ -107,7 +136,8 @@ export default function FacturesClient({ factures: initial, clients, produits, t
   const del = async (f: Facture) => {
     if (!confirm(`Supprimer ${f.numero} ?`)) return
     const sb = getSupabase()
-    await sb.from('factures').delete().eq('id', f.id)
+    const { error: e } = await sb.from('factures').delete().eq('id', f.id)
+    if (e) { alert('Suppression impossible : ' + e.message); return }
     setFactures(prev => prev.filter(x => x.id !== f.id)); router.refresh()
   }
 
@@ -129,7 +159,8 @@ export default function FacturesClient({ factures: initial, clients, produits, t
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
       const sb = getSupabase()
-      await sb.from('factures').update({ fne_certifiee: true, fne_reference: data.reference, qr_code_url: data.qrCodeUrl }).eq('id', f.id)
+      const { error: eF } = await sb.from('factures').update({ fne_certifiee: true, fne_reference: data.reference, qr_code_url: data.qrCodeUrl }).eq('id', f.id)
+      if (eF) throw new Error('certifiée côté FNE (réf. ' + data.reference + ') mais NON enregistrée dans le CRM : ' + eF.message)
       setFactures(prev => prev.map(x => x.id === f.id ? { ...x, fne_certifiee: true, fne_reference: data.reference } : x))
       alert(`✅ FNE certifiée — Réf: ${data.reference}`)
     } catch (err) { alert(`❌ Erreur FNE: ${err}`) }

@@ -149,7 +149,8 @@ export default function CaisseClient({ operations: initial, ouvertures: initOuv,
     const sort = opsJour.filter(op => op.type === 'sortie').reduce((s, op) => s + op.montant, 0)
     const soldFinJour = ouv.solde_debut + entr - sort
     const sb = getSupabase()
-    await sb.from('caisse_ouvertures').update({ ferme: true, solde_fin: soldFinJour }).eq('id', ouv.id)
+    const { error: e } = await sb.from('caisse_ouvertures').update({ ferme: true, solde_fin: soldFinJour }).eq('id', ouv.id)
+    if (e) { alert('Fermeture de caisse non enregistrée : ' + e.message); return }
     setOuvertures(prev => prev.map(o => o.id === ouv.id ? { ...o, ferme: true, solde_fin: soldFinJour } : o))
     router.refresh()
   }
@@ -157,7 +158,8 @@ export default function CaisseClient({ operations: initial, ouvertures: initOuv,
   const delOp = async (op: Operation) => {
     if (!confirm('Supprimer cette opération ?')) return
     const sb = getSupabase()
-    await sb.from('caisse_operations').delete().eq('id', op.id)
+    const { error: e } = await sb.from('caisse_operations').delete().eq('id', op.id)
+    if (e) { alert('Suppression impossible : ' + e.message); return }
     setOperations(prev => prev.filter(x => x.id !== op.id)); router.refresh()
   }
 

@@ -155,13 +155,15 @@ export default function ProductionClient({
   const del = async (p: Production) => {
     if (!confirm(`Supprimer la production « ${p.caracteristique.slice(0,40)} » ?`)) return
     const sb = getSupabase()
-    await sb.from('productions').delete().eq('id', p.id)
+    const { error: e } = await sb.from('productions').delete().eq('id', p.id)
+    if (e) { alert('Suppression impossible : ' + e.message); return }
     setProds(prev => prev.filter(x => x.id !== p.id))
   }
 
   const changeStatut = async (p: Production, statut: string) => {
     const sb = getSupabase()
-    await sb.from('productions').update({ statut }).eq('id', p.id)
+    const { error: e } = await sb.from('productions').update({ statut }).eq('id', p.id)
+    if (e) { alert('Changement de statut non enregistré : ' + e.message); return }
     setProds(prev => prev.map(x => x.id === p.id ? { ...x, statut } : x))
   }
 
@@ -169,11 +171,12 @@ export default function ProductionClient({
     if (!sel) return
     const sb = getSupabase()
     const num = blNum || `BL-${new Date().getFullYear()}-${String(Math.floor(Math.random()*9000)+1000)}`
-    await sb.from('productions').update({
+    const { error: e } = await sb.from('productions').update({
       numero_bl: num,
       statut: 'Livré',
       date_livraison_reelle: today(),
     }).eq('id', sel.id)
+    if (e) { alert('Livraison non enregistrée, bon non généré : ' + e.message); return }
     setProds(prev => prev.map(p => p.id === sel.id
       ? { ...p, numero_bl: num, statut: 'Livré', date_livraison_reelle: today() }
       : p))

@@ -62,7 +62,8 @@ export default function FournisseursClient({ fournisseurs: initial }: { fourniss
   const del = async (f: Fournisseur) => {
     if (!confirm(`Supprimer "${f.nom}" ?`)) return
     const sb = getSupabase()
-    await sb.from('fournisseurs').delete().eq('id', f.id)
+    const { error: e } = await sb.from('fournisseurs').delete().eq('id', f.id)
+    if (e) { alert('Suppression impossible : ' + e.message); return }
     setFournisseurs(prev => prev.filter(x => x.id !== f.id)); router.refresh()
   }
 

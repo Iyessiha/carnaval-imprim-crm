@@ -85,14 +85,16 @@ export default function CatalogueClient({ produits: initial, types }: {
 
   const toggleActif = async (p: Produit) => {
     const sb = getSupabase()
-    await sb.from('produits').update({ actif: !p.actif }).eq('id', p.id)
+    const { error: e } = await sb.from('produits').update({ actif: !p.actif }).eq('id', p.id)
+    if (e) { alert('Modification non enregistrée : ' + e.message); return }
     setProduits(prev => prev.map(x => x.id === p.id ? { ...x, actif: !x.actif } : x))
   }
 
   const del = async (p: Produit) => {
     if (!confirm(`Supprimer "${p.nom}" ?`)) return
     const sb = getSupabase()
-    await sb.from('produits').delete().eq('id', p.id)
+    const { error: e } = await sb.from('produits').delete().eq('id', p.id)
+    if (e) { alert('Suppression impossible (produit utilisé dans un devis ou une facture ?) : ' + e.message); return }
     setProduits(prev => prev.filter(x => x.id !== p.id)); router.refresh()
   }
 
