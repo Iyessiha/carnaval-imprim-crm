@@ -48,17 +48,24 @@ export default function ChargesClient({ charges: initial }: { charges: Charge[] 
       libelle: form.libelle.trim(), montant, frequence: form.frequence, categorie: form.categorie,
       prochaine_echeance: form.prochaine_echeance || null, actif: form.actif,
     }
-    const { error: e } = sel
-      ? await sb.from('charges_fixes').update(body).eq('id', sel.id)
-      : await sb.from('charges_fixes').insert(body)
+    // .select() renvoie les lignes réellement écrites : si la base refuse en silence
+    // (sécurité par ligne), on obtient 0 ligne et NON une erreur → on le détecte ici.
+    const { data: ecrit, error: e } = sel
+      ? await sb.from('charges_fixes').update(body).eq('id', sel.id).select('id')
+      : await sb.from('charges_fixes').insert(body).select('id')
     setLoading(false)
     if (e) { setError(e.message); return }
+    if (!ecrit || ecrit.length === 0) {
+      setError("Modification refusée par la base de données : rien n'a été enregistré. Votre compte n'a probablement pas le droit de modifier les charges fixes — contactez l'administrateur.")
+      return
+    }
     close(); router.refresh()
   }
 
   const toggleActif = async (c: Charge) => {
-    const { error: e } = await getSupabase().from('charges_fixes').update({ actif: !c.actif }).eq('id', c.id)
+    const { data, error: e } = await getSupabase().from('charges_fixes').update({ actif: !c.actif }).eq('id', c.id).select('id')
     if (e) { alert(e.message); return }
+    if (!data?.length) { alert("Modification refusée par la base de données : rien n'a été enregistré (droits insuffisants)."); return }
     setCharges(prev => prev.map(x => x.id === c.id ? { ...x, actif: !x.actif } : x)); router.refresh()
   }
 
@@ -66,15 +73,17 @@ export default function ChargesClient({ charges: initial }: { charges: Charge[] 
   const avancer = async (c: Charge) => {
     const next = echeanceSuivante(c.prochaine_echeance, c.frequence)
     if (!confirm(`« ${c.libelle} » réglée ? Prochaine échéance : ${formatDateFR(next)}`)) return
-    const { error: e } = await getSupabase().from('charges_fixes').update({ prochaine_echeance: next }).eq('id', c.id)
+    const { data, error: e } = await getSupabase().from('charges_fixes').update({ prochaine_echeance: next }).eq('id', c.id).select('id')
     if (e) { alert(e.message); return }
+    if (!data?.length) { alert("Modification refusée par la base de données : rien n'a été enregistré (droits insuffisants)."); return }
     setCharges(prev => prev.map(x => x.id === c.id ? { ...x, prochaine_echeance: next } : x)); router.refresh()
   }
 
   const del = async (c: Charge) => {
     if (!confirm(`Supprimer « ${c.libelle} » ?\n(Astuce : désactivez-la pour la conserver sans la compter.)`)) return
-    const { error: e } = await getSupabase().from('charges_fixes').delete().eq('id', c.id)
-    if (e) { alert('Suppression impossible (réservée aux administrateurs) : ' + e.message); return }
+    const { data, error: e } = await getSupabase().from('charges_fixes').delete().eq('id', c.id).select('id')
+    if (e) { alert('Suppression impossible : ' + e.message); return }
+    if (!data?.length) { alert('Suppression refusée : réservée aux administrateurs.'); return }
     setCharges(prev => prev.filter(x => x.id !== c.id)); router.refresh()
   }
 
