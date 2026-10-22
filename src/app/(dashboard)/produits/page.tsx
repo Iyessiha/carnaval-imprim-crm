@@ -1,3 +1,4 @@
+import { exigerModule } from '@/lib/acces-serveur'
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import CatalogueClient from '../catalogue/CatalogueClient'
@@ -5,6 +6,7 @@ import CatalogueClient from '../catalogue/CatalogueClient'
 export const metadata = { title: 'Produits — Carnaval Imprim CRM' }
 
 export default async function ProduitsPage() {
+  await exigerModule('catalogue')
   const supabase = await createClient()
   const [{ data: produits }, { data: types }] = await Promise.all([
     supabase.from('produits').select('*, types_impression(libelle)').order('nom'),

@@ -1,29 +1,43 @@
 export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { chargerSession } from '@/lib/acces-serveur'
+import { routesAccessibles } from '@/lib/acces'
 import Sidebar from '@/components/shared/Sidebar'
 import PWAInstall from '@/components/PWAInstall'
+import Deconnexion from '@/components/shared/Deconnexion'
+
+const TOUTES_LES_ROUTES = [
+  '/dashboard', '/clients', '/devis', '/factures', '/relances', '/production', '/livraisons',
+  '/fournisseurs', '/bons', '/produits', '/catalogue', '/caisse', '/bons-caisse', '/charges',
+  '/comptabilite', '/stats', '/parametres',
+]
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user, profil } = await chargerSession()
   if (!user) redirect('/login')
 
-  // Compte désactivé : la base refuse toute modification (sécurité par ligne). On le dit
-  // clairement plutôt que de laisser l'utilisateur modifier sans que rien ne soit enregistré.
-  const { data: profil } = await supabase.from('profiles').select('actif').eq('id', user.id).maybeSingle()
-  const compteInactif = (profil as { actif?: boolean } | null)?.actif === false
+  // Compte désactivé (ou sans profil) : la base ne laisse rien lire ni écrire.
+  // On affiche clairement la situation plutôt qu'une application vide.
+  if (!profil || !profil.actif) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: '#F6F4F1' }}>
+        <div style={{ background: '#fff', border: '1px solid #E4DDD6', borderRadius: 16, padding: 28, maxWidth: 440, textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 10 }}>Compte désactivé</div>
+          <p style={{ fontSize: 14, color: '#7A736C', lineHeight: 1.6, margin: '0 0 20px' }}>
+            Votre accès à Carnaval Imprim CRM est désactivé. Contactez l&apos;administrateur pour le réactiver.
+          </p>
+          <Deconnexion />
+        </div>
+      </div>
+    )
+  }
+
+  const routes = routesAccessibles(profil, TOUTES_LES_ROUTES)
 
   return (
     <div className="dashboard-wrap">
-      <Sidebar />
+      <Sidebar routes={routes} />
       <main className="dashboard-main">
-        {compteInactif && (
-          <div role="alert" style={{ background:'#D14343', color:'#fff', padding:'10px 16px', fontSize:13, fontWeight:600, lineHeight:1.4 }}>
-            ⚠️ Votre compte est désactivé : vous pouvez consulter les données mais aucune modification ne sera enregistrée.
-            Contactez l&apos;administrateur pour réactiver votre accès.
-          </div>
-        )}
         {children}
       </main>
       <PWAInstall />

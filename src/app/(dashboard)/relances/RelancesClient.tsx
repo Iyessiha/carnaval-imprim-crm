@@ -10,7 +10,7 @@ import { AlertTriangle, Printer, Mail, Phone } from 'lucide-react'
 type FL = { qte: number; pu: number }
 type Pmt = { montant: number; date: string; mode: string }
 type Facture = {
-  id: string; numero: string; date: string; echeance?: string
+  id: string; numero: string; date: string; echeance?: string; is_avoir?: boolean | null
   remise: number; tva_applicable: boolean; client_id: string
   factures_lignes: FL[]; paiements: Pmt[]
   clients: { nom: string; telephone?: string; email?: string; adresse?: string } | null
@@ -27,10 +27,11 @@ export default function RelancesClient({ factures, entreprise }: { factures: Fac
     const paye = f.paiements.reduce((s, p) => s + p.montant, 0)
     const reste = Math.max(0, t.ttc - paye)
     const statut = statutPaiement(t.ttc, paye)
-    const joursRetard = f.echeance ? Math.max(0, Math.floor((new Date().getTime() - new Date(f.echeance).getTime()) / 86400000)) : 0
+    // Échéance lue à minuit local (AAAA-MM-JJ + T00:00:00) pour ne pas décaler le compte de jours
+    const joursRetard = f.echeance ? Math.max(0, Math.floor((new Date().getTime() - new Date(f.echeance + 'T00:00:00').getTime()) / 86400000)) : 0
     const niv = joursRetard === 0 ? 'Non échu' : joursRetard <= 30 ? '1ère relance' : joursRetard <= 60 ? '2ème relance' : 'Contentieux'
     return { ...f, ttc: t.ttc, paye, reste, statut, joursRetard, niv }
-  }).filter(f => f.statut !== 'Payée'), [factures, tva])
+  }).filter(f => f.statut !== 'Payée' && !f.is_avoir), [factures, tva])  // un avoir n'est pas une créance
 
   const filtered = useMemo(() => niveau === 'Tous' ? impayees : impayees.filter(f => f.niv === niveau), [impayees, niveau])
 

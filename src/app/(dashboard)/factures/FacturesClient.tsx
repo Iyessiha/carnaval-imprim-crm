@@ -3,6 +3,7 @@ import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatFCFA, formatDateFR, calculerTotaux, statutPaiement, today } from '@/lib/utils'
+import { certifierFacture, mapFactureToFnePayload, type FneTemplate, type FnePaymentMethod } from '@/lib/fne/api'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import PageHeader from '@/components/ui/PageHeader'
@@ -64,7 +65,10 @@ export default function FacturesClient({ factures: initial, clients, produits, t
   const [payForm, setPayForm] = useState({ date: today(), montant: 0, mode: 'cash', reference: '' })
 
   const openCreate = () => { setError(''); setForm(emptyForm); setModal('create') }
-  const openEdit = (f: Facture) => { setError(''); setSel(f); setForm({ ...f }); setModal('edit') }
+  const openEdit = (f: Facture) => {
+    if (f.fne_certifiee) { alert('Facture certifiée FNE : elle ne peut plus être modifiée (conservation obligatoire).'); return }
+    setError(''); setSel(f); setForm({ ...f }); setModal('edit')
+  }
   const openView = (f: Facture) => { setSel(f); setModal('view') }
   const openPay = (f: Facture) => {
     const t = calculerTotaux(f.factures_lignes || [], f.remise, tva, f.tva_applicable)
@@ -84,6 +88,7 @@ export default function FacturesClient({ factures: initial, clients, produits, t
 
   const save = async () => {
     if (!form.client_id) { setError('Sélectionnez un client.'); return }
+    if (sel?.fne_certifiee) { setError('Facture certifiée FNE : modification interdite.'); return }
     setLoading(true); setError('')
     const sb = getSupabase()
     const { factures_lignes, clients: _c, paiements: _p, ...body } = form as Facture & { clients: unknown; paiements: unknown }
@@ -124,46 +129,69 @@ export default function FacturesClient({ factures: initial, clients, produits, t
   }
 
   const savePay = async () => {
-    if (!sel || !payForm.montant) return
-    setLoading(true)
+    if (!sel) return
+    const montant = Number(payForm.montant)
+    if (!(montant > 0)) { setError('Le montant encaissé doit être supérieur à 0.'); return }
+    const t = calculerTotaux(sel.factures_lignes || [], sel.remise, tva, sel.tva_applicable)
+    const dejaPaye = (sel.paiements || []).reduce((s, p) => s + p.montant, 0)
+    const reste = Math.max(0, t.ttc - dejaPaye)
+    if (montant > reste) { setError(`Le montant dépasse le reste à payer (${formatFCFA(reste)}).`); return }
+    setLoading(true); setError('')
     const sb = getSupabase()
-    const { data, error: e } = await sb.from('paiements').insert({ facture_id: sel.id, ...payForm }).select().single()
-    if (e) { alert(e.message); setLoading(false); return }
+    const { data, error: e } = await sb.from('paiements').insert({ facture_id: sel.id, ...payForm, montant }).select().single()
+    if (e) { setError(e.message); setLoading(false); return }
     setFactures(prev => prev.map(f => f.id === sel.id ? { ...f, paiements: [...(f.paiements || []), data] } : f))
     setLoading(false); setModal(null); setSel(null); router.refresh()
   }
 
   const del = async (f: Facture) => {
+    if (f.fne_certifiee) { alert('Facture certifiée FNE : suppression interdite (conservation obligatoire).'); return }
+    if ((f.paiements || []).length) { alert('Cette facture a des paiements enregistrés : suppression interdite.'); return }
     if (!confirm(`Supprimer ${f.numero} ?`)) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('factures').delete().eq('id', f.id)
+    const { data: supprime, error: e } = await sb.from('factures').delete().eq('id', f.id).select('id')
     if (e) { alert('Suppression impossible : ' + e.message); return }
+    if (!supprime?.length) { alert('Suppression refusée : votre compte ne peut pas supprimer cette facture.'); return }
     setFactures(prev => prev.filter(x => x.id !== f.id)); router.refresh()
   }
 
   const certifier = async (f: Facture) => {
     if (f.fne_certifiee) { alert('Déjà certifiée FNE.'); return }
+    const client = clients.find(c => c.id === f.client_id)
+    if (f.template_fne === 'B2B' && !client?.ncc) {
+      alert('Certification impossible : le NCC du client est obligatoire pour une facture B2B. Renseignez-le dans la fiche client.')
+      return
+    }
+    if (!(f.factures_lignes || []).length) { alert('Certification impossible : la facture ne contient aucune ligne.'); return }
     setLoading(true)
     try {
-      const client = clients.find(c => c.id === f.client_id)
-      const payload = {
-        invoiceType: f.is_avoir ? 'avoir' : 'sale', paymentMethod: f.payment_method_fne,
-        template: f.template_fne, clientNcc: f.template_fne === 'B2B' ? client?.ncc : undefined,
-        clientCompanyName: client?.nom || '', clientPhone: client?.telephone || '',
-        pointOfSale: entreprise?.fne_point_of_sale || entreprise?.nom || '',
-        establishment: entreprise?.fne_establishment || entreprise?.nom || '',
-        items: (f.factures_lignes || []).map(l => ({ taxes: ['TVA'], description: l.designation, quantity: l.qte, amount: l.pu, measurementUnit: 'pcs' })),
-        discount: f.remise || 0, isRne: false,
-      }
-      const res = await fetch('/api/fne/certifier', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
+      const payload = mapFactureToFnePayload(
+        {
+          template_fne: f.template_fne as FneTemplate,
+          payment_method_fne: f.payment_method_fne as FnePaymentMethod,
+          is_avoir: f.is_avoir,
+          remise: f.remise,
+          lignes: (f.factures_lignes || []).map(l => {
+            const x = l as Ligne & { taxes?: string[]; measurement_unit?: string; reference_article?: string }
+            return { designation: x.designation, qte: x.qte, pu: x.pu, taxes: x.taxes ?? ['TVA'], measurement_unit: x.measurement_unit, reference_article: x.reference_article }
+          }),
+        },
+        { nom: client?.nom || '', telephone: client?.telephone, email: client?.email, ncc: client?.ncc },
+        { fne_point_of_sale: entreprise?.fne_point_of_sale || entreprise?.nom || '', fne_establishment: entreprise?.fne_establishment || entreprise?.nom || '', ncc: entreprise?.ncc || '' },
+      )
+      const data = await certifierFacture(payload)
       const sb = getSupabase()
-      const { error: eF } = await sb.from('factures').update({ fne_certifiee: true, fne_reference: data.reference, qr_code_url: data.qrCodeUrl }).eq('id', f.id)
-      if (eF) throw new Error('certifiée côté FNE (réf. ' + data.reference + ') mais NON enregistrée dans le CRM : ' + eF.message)
-      setFactures(prev => prev.map(x => x.id === f.id ? { ...x, fne_certifiee: true, fne_reference: data.reference } : x))
+      const { data: maj, error: eF } = await sb.from('factures')
+        .update({ fne_certifiee: true, fne_reference: data.reference, qr_code_url: data.qrCodeUrl })
+        .eq('id', f.id).select('id')
+      if (eF || !maj?.length) {
+        throw new Error('certifiée côté DGI (réf. ' + data.reference + ') mais NON enregistrée dans le CRM' + (eF ? ' : ' + eF.message : '') + '. Notez cette référence et contactez l\'administrateur.')
+      }
+      setFactures(prev => prev.map(x => x.id === f.id ? { ...x, fne_certifiee: true, fne_reference: data.reference, qr_code_url: data.qrCodeUrl } : x))
       alert(`✅ FNE certifiée — Réf: ${data.reference}`)
-    } catch (err) { alert(`❌ Erreur FNE: ${err}`) }
+    } catch (err) {
+      alert(`❌ Erreur FNE : ${err instanceof Error ? err.message : String(err)}`)
+    }
     setLoading(false); router.refresh()
   }
 
@@ -378,9 +406,9 @@ ${f.fne_certifiee && f.qr_code_url ? `<div class="fne-box">✅ Facture certifié
                   {statut !== 'Payée' && <BtnIcon onClick={() => openPay(f)} title="Encaisser"><Wallet size={16} /></BtnIcon>}
                   <BtnIcon onClick={() => imprimer(f)} title="Imprimer PDF"><Printer size={16} /></BtnIcon>
                   <BtnIcon onClick={() => openView(f)} title="Aperçu"><Eye size={16} /></BtnIcon>
-                  <BtnIcon onClick={() => openEdit(f)} title="Modifier"><Pencil size={16} /></BtnIcon>
+                  {!f.fne_certifiee && <BtnIcon onClick={() => openEdit(f)} title="Modifier"><Pencil size={16} /></BtnIcon>}
                   {!f.fne_certifiee && <BtnIcon onClick={() => certifier(f)} title="Certifier FNE"><QrCode size={16} /></BtnIcon>}
-                  <BtnIcon onClick={() => del(f)} danger><Trash2 size={16} /></BtnIcon>
+                  {!f.fne_certifiee && <BtnIcon onClick={() => del(f)} danger><Trash2 size={16} /></BtnIcon>}
                 </td>
               </tr>
             )

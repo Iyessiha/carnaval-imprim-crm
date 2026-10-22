@@ -22,7 +22,7 @@ const STATUT_STYLE: Record<string,{bg:string;color:string}> = {
   'Livré':         { bg:'#E8F7EE', color:'#2D7A4E' },
 }
 
-type DevisRef = { id: string; numero: string; statut: string; clients: {nom:string}|null; devis_lignes: {designation:string;qte:number}[] }
+type DevisRef = { id: string; numero: string; statut: string; client_id: string|null; clients: {nom:string}|null; devis_lignes: {designation:string;qte:number}[] }
 type TypeImp = { id: string; libelle: string }
 type Client = { id: string; nom: string; telephone?: string; adresse?: string }
 type Fournisseur = { id: string; nom: string }
@@ -73,7 +73,6 @@ export default function ProductionClient({
   const [form, setForm] = useState<F>(emptyF())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [blNum, setBlNum] = useState('')
 
   const f = (k: keyof F, v: string|number|boolean) => setForm(p => ({ ...p, [k]: v }))
 
@@ -106,7 +105,7 @@ export default function ProductionClient({
     if (!d) return
     const caract = (d.devis_lignes || []).map((l: {designation:string;qte:number}) => `${l.designation} ×${l.qte}`).join(' / ')
     f('devis_id', devisId)
-    f('client_id', '') // sera sélectionné via le devis
+    f('client_id', d.client_id || '') // le client de l'ordre est celui du devis
     if (caract) f('caracteristique', caract.slice(0, 200))
   }
 
@@ -153,10 +152,12 @@ export default function ProductionClient({
   }
 
   const del = async (p: Production) => {
+    if (p.numero_bl) { alert(`Bon de livraison ${p.numero_bl} émis : suppression interdite (pièce commerciale).`); return }
     if (!confirm(`Supprimer la production « ${p.caracteristique.slice(0,40)} » ?`)) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('productions').delete().eq('id', p.id)
+    const { data: supprime, error: e } = await sb.from('productions').delete().eq('id', p.id).select('id')
     if (e) { alert('Suppression impossible : ' + e.message); return }
+    if (!supprime?.length) { alert('Suppression refusée : votre compte ne peut pas supprimer cet ordre.'); return }
     setProds(prev => prev.filter(x => x.id !== p.id))
   }
 
@@ -167,26 +168,30 @@ export default function ProductionClient({
     setProds(prev => prev.map(x => x.id === p.id ? { ...x, statut } : x))
   }
 
+  // Numéro de BL : série continue attribuée par la base (next_numero), jamais tiré au hasard.
+  // Un BL déjà numéroté n'est pas renuméroté : il est seulement réimprimé.
   const saveBL = async () => {
     if (!sel) return
+    if (sel.numero_bl) { imprimerBL(sel); close(); return }
     const sb = getSupabase()
-    const num = blNum || `BL-${new Date().getFullYear()}-${String(Math.floor(Math.random()*9000)+1000)}`
-    const { error: e } = await sb.from('productions').update({
-      numero_bl: num,
-      statut: 'Livré',
-      date_livraison_reelle: today(),
-    }).eq('id', sel.id)
+    const { data: num, error: eN } = await sb.rpc('next_numero', { p_type: 'BL', p_annee: new Date().getFullYear() })
+    if (eN || !num) { alert('Numéro de BL impossible à générer : ' + (eN?.message || 'réponse vide')); return }
+    const { data: maj, error: e } = await sb.from('productions').update({
+      numero_bl: num, statut: 'Livré', date_livraison_reelle: today(),
+    }).eq('id', sel.id).is('numero_bl', null).select('id')
     if (e) { alert('Livraison non enregistrée, bon non généré : ' + e.message); return }
+    if (!maj?.length) { alert('Ce bon de livraison a déjà été émis : rechargez la page.'); return }
+    const numero = String(num)
     setProds(prev => prev.map(p => p.id === sel.id
-      ? { ...p, numero_bl: num, statut: 'Livré', date_livraison_reelle: today() }
+      ? { ...p, numero_bl: numero, statut: 'Livré', date_livraison_reelle: today() }
       : p))
-    imprimerBL({ ...sel, numero_bl: num })
+    imprimerBL({ ...sel, numero_bl: numero })
     close()
   }
 
   const imprimerBL = (p: Production) => {
     const ent = entreprise
-    const num = p.numero_bl || `BL-${new Date().getFullYear()}-XXXX`
+    const num = p.numero_bl || 'BL non numéroté'
     const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">
 <title>BL ${num}</title>
 <style>
@@ -460,7 +465,7 @@ export default function ProductionClient({
                 <td style={{...td,textAlign:'right' as const}}>
                   <div style={{display:'flex',gap:2,justifyContent:'flex-end'}}>
                     <BtnIcon onClick={()=>openEdit(p)} title="Modifier"><Pencil size={14}/></BtnIcon>
-                    <BtnIcon title="Bon de livraison" onClick={()=>{setSel(p);setBlNum(p.numero_bl||'');setModal('bl')}}>
+                    <BtnIcon title="Bon de livraison" onClick={()=>{setSel(p);setModal('bl')}}>
                       <PackageCheck size={14} style={{color:'#2D7A4E'}}/>
                     </BtnIcon>
                     <BtnIcon onClick={()=>del(p)} danger title="Supprimer"><Trash2 size={14}/></BtnIcon>
@@ -486,10 +491,9 @@ export default function ProductionClient({
             <div style={{color:'#7A736C'}}>Qté : {sel.quantite?.toLocaleString('fr-FR')} · Format : {sel.format||'—'}</div>
             {sel.devis && <div style={{color:'#2A5FA5',marginTop:4}}>📋 Réf. devis : {(sel.devis as {numero:string}).numero}</div>}
           </div>
-          <Field label="Numéro de BL (auto si vide)">
-            <input style={inputStyle} value={blNum} onChange={e=>setBlNum(e.target.value)}
-              placeholder={`BL-${new Date().getFullYear()}-001`} />
-          </Field>
+          {sel.numero_bl
+            ? <div style={{fontSize:13,marginBottom:8}}>Bon déjà émis : <strong>{sel.numero_bl}</strong> (réimpression uniquement)</div>
+            : <div style={{fontSize:13,color:'#7A736C',marginBottom:8}}>Le numéro sera attribué automatiquement (série continue BL).</div>}
           <div style={{display:'flex',justifyContent:'flex-end',gap:10,marginTop:8}}>
             <BtnGhost onClick={close}>Annuler</BtnGhost>
             <BtnPrimary onClick={saveBL}>

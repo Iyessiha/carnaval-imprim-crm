@@ -2,7 +2,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
-import { formatFCFA, formatDateFR, today } from '@/lib/utils'
+import { formatFCFA, formatDateFR, today, moisDe } from '@/lib/utils'
 import Modal from '@/components/ui/Modal'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
@@ -70,31 +70,46 @@ export default function CaisseClient({ operations: initial, ouvertures: initOuv,
 
   // ── Calculs ────────────────────────────────────────────────────
   const opsMois = useMemo(() => operations.filter(op => {
-    const d = new Date(op.date)
-    return d.getFullYear() === anneeFiltre && d.getMonth() === moisFiltre
+    const m = moisDe(op.date)
+    return m.annee === anneeFiltre && m.mois === moisFiltre
   }), [operations, anneeFiltre, moisFiltre])
 
   const ouverturesMois = useMemo(() => ouvertures.filter(o => {
-    const d = new Date(o.date)
-    return d.getFullYear() === anneeFiltre && d.getMonth() === moisFiltre
+    const m = moisDe(o.date)
+    return m.annee === anneeFiltre && m.mois === moisFiltre
   }), [ouvertures, anneeFiltre, moisFiltre])
 
-  const soldDebutMois = ouverturesMois.length > 0
-    ? ouverturesMois[ouverturesMois.length - 1].solde_debut
-    : 0
+  // Première ouverture connue : point de départ du calcul de solde.
+  const premiereOuverture = useMemo(
+    () => [...ouvertures].sort((a, b) => a.date.localeCompare(b.date))[0],
+    [ouvertures])
+
+  // Solde de début du mois : l'ouverture du mois si elle existe, sinon le solde reporté
+  // depuis la dernière situation connue (le solde ne repart pas de zéro un mois sans ouverture).
+  const soldDebutMois = useMemo(() => {
+    const ouvMois = [...ouverturesMois].sort((a, b) => a.date.localeCompare(b.date))[0]
+    if (ouvMois) return Number(ouvMois.solde_debut)
+    if (!premiereOuverture) return 0
+    const debutMois = `${anneeFiltre}-${String(moisFiltre + 1).padStart(2, '0')}-01`
+    if (premiereOuverture.date >= debutMois) return 0
+    const mouvementsAvant = operations
+      .filter(op => op.date >= premiereOuverture.date && op.date < debutMois)
+      .reduce((s, op) => s + (op.type === 'entree' ? op.montant : -op.montant), 0)
+    return Number(premiereOuverture.solde_debut) + mouvementsAvant
+  }, [ouverturesMois, premiereOuverture, operations, anneeFiltre, moisFiltre])
 
   const totalEntrees = opsMois.filter(op => op.type === 'entree').reduce((s, op) => s + op.montant, 0)
   const totalSorties = opsMois.filter(op => op.type === 'sortie').reduce((s, op) => s + op.montant, 0)
   const soldeFin = soldDebutMois + totalEntrees - totalSorties
 
-  // Solde courant (toutes opérations jusqu'à aujourd'hui)
+  // Solde courant : depuis la première ouverture, toutes opérations incluses
   const soldeCourant = useMemo(() => {
-    const premOuv = [...ouvertures].sort((a, b) => a.date.localeCompare(b.date))
-    const base = premOuv[0]?.solde_debut || 0
-    const totEntr = operations.filter(op => op.type === 'entree').reduce((s, op) => s + op.montant, 0)
-    const totSort = operations.filter(op => op.type === 'sortie').reduce((s, op) => s + op.montant, 0)
-    return base + totEntr - totSort
-  }, [operations, ouvertures])
+    if (!premiereOuverture) return 0
+    const mouvements = operations
+      .filter(op => op.date >= premiereOuverture.date)
+      .reduce((s, op) => s + (op.type === 'entree' ? op.montant : -op.montant), 0)
+    return Number(premiereOuverture.solde_debut) + mouvements
+  }, [operations, premiereOuverture])
 
   // Données par jour du mois pour le graphique
   const parJour = useMemo(() => {
@@ -108,9 +123,14 @@ export default function CaisseClient({ operations: initial, ouvertures: initOuv,
   }, [opsMois])
 
   // ── Actions ────────────────────────────────────────────────────
+  const jourFerme = (date: string) => ouvertures.some(o => o.date === date && o.ferme)
+
   const saveOp = async () => {
     if (!form.libelle.trim()) { setError('Libellé obligatoire.'); return }
     if (!form.montant || form.montant <= 0) { setError('Montant invalide.'); return }
+    if (jourFerme(form.date)) { setError(`La caisse du ${formatDateFR(form.date)} est fermée : aucune opération ne peut y être ajoutée.`); return }
+    if (form.type === 'sortie' && form.montant > soldeCourant &&
+        !confirm(`Cette sortie ramène la caisse à ${formatFCFA(soldeCourant - form.montant)} (solde négatif). Continuer ?`)) return
     setLoading(true); setError('')
     const sb = getSupabase()
     const body = {
@@ -141,9 +161,9 @@ export default function CaisseClient({ operations: initial, ouvertures: initOuv,
   }
 
   const fermerCaisse = async (date: string) => {
-    if (!confirm(`Fermer la caisse du ${formatDateFR(date)} ?`)) return
     const ouv = ouvertures.find(o => o.date === date)
-    if (!ouv) return
+    if (!ouv) { alert(`Aucune ouverture de caisse enregistrée pour le ${formatDateFR(date)} : impossible de fermer.`); return }
+    if (!confirm(`Fermer la caisse du ${formatDateFR(date)} ?`)) return
     const opsJour = operations.filter(op => op.date === date)
     const entr = opsJour.filter(op => op.type === 'entree').reduce((s, op) => s + op.montant, 0)
     const sort = opsJour.filter(op => op.type === 'sortie').reduce((s, op) => s + op.montant, 0)
@@ -156,10 +176,12 @@ export default function CaisseClient({ operations: initial, ouvertures: initOuv,
   }
 
   const delOp = async (op: Operation) => {
+    if (jourFerme(op.date)) { alert(`La caisse du ${formatDateFR(op.date)} est fermée : l'opération ne peut pas être supprimée.`); return }
     if (!confirm('Supprimer cette opération ?')) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('caisse_operations').delete().eq('id', op.id)
+    const { data: supprime, error: e } = await sb.from('caisse_operations').delete().eq('id', op.id).select('id')
     if (e) { alert('Suppression impossible : ' + e.message); return }
+    if (!supprime?.length) { alert('Suppression refusée : votre compte ne peut pas supprimer cette opération.'); return }
     setOperations(prev => prev.filter(x => x.id !== op.id)); router.refresh()
   }
 

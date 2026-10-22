@@ -2,11 +2,12 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
-import { formatFCFA, formatDateFR, calculerTotaux, today } from '@/lib/utils'
+import { formatFCFA, formatDateFR, calculerTotaux, today, moisDe, signeDocument } from '@/lib/utils'
 import Modal from '@/components/ui/Modal'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
 import { Check, Pencil, Trash2, Plus, Printer, TrendingUp, TrendingDown, Scale, Receipt, CreditCard, FileText } from 'lucide-react'
+import { messageSuppression, ligneSupprimee } from '@/lib/suppression'
 
 // ── Types ────────────────────────────────────────────────────────
 type Depense = {
@@ -19,7 +20,7 @@ type FL = { qte: number; pu: number }
 type Pmt = { montant: number; date: string; mode: string; reference?: string }
 type Facture = {
   id: string; numero: string; date: string; tva_applicable: boolean
-  remise: number; fne_certifiee: boolean; client_id: string
+  remise: number; fne_certifiee: boolean; client_id: string; is_avoir?: boolean | null
   factures_lignes: FL[]; paiements: Pmt[]
   clients: { nom: string } | null
 }
@@ -90,34 +91,34 @@ export default function ComptaClient({ depenses: initialDep, factures, paiements
   // ── Calculs ─────────────────────────────────────────────────────
   const facParMois = useMemo(() =>
     factures.filter(f => {
-      const d = new Date(f.date)
-      return d.getFullYear() === anneeFiltre && d.getMonth() === moisFiltre
+      const m = moisDe(f.date)
+      return m.annee === anneeFiltre && m.mois === moisFiltre
     }), [factures, anneeFiltre, moisFiltre])
 
   const depParMois = useMemo(() =>
     depenses.filter(d => {
-      const dt = new Date(d.date)
-      return dt.getFullYear() === anneeFiltre && dt.getMonth() === moisFiltre
+      const m = moisDe(d.date)
+      return m.annee === anneeFiltre && m.mois === moisFiltre
     }), [depenses, anneeFiltre, moisFiltre])
 
   const caHTMois = useMemo(() =>
     facParMois.reduce((s, f) => {
       const t = calculerTotaux(f.factures_lignes, f.remise, tva, f.tva_applicable)
-      return s + t.baseHT
+      return s + signeDocument(f) * t.baseHT
     }, 0), [facParMois, tva])
 
   const tvaMois = useMemo(() =>
     facParMois.reduce((s, f) => {
       const t = calculerTotaux(f.factures_lignes, f.remise, tva, f.tva_applicable)
-      return s + t.tva
+      return s + signeDocument(f) * t.tva
     }, 0), [facParMois, tva])
 
   const caTTCMois = caHTMois + tvaMois
 
   const encMois = useMemo(() =>
     paiements.filter(p => {
-      const d = new Date(p.date)
-      return d.getFullYear() === anneeFiltre && d.getMonth() === moisFiltre
+      const m = moisDe(p.date)
+      return m.annee === anneeFiltre && m.mois === moisFiltre
     }).reduce((s, p) => s + p.montant, 0), [paiements, anneeFiltre, moisFiltre])
 
   const totalDepMois = depParMois.reduce((s, d) => s + d.montant, 0)
@@ -128,9 +129,9 @@ export default function ComptaClient({ depenses: initialDep, factures, paiements
   // Par mois sur l'année
   const dataAnnee = useMemo(() => {
     return Array(12).fill(0).map((_, m) => {
-      const fMois = factures.filter(f => new Date(f.date).getFullYear() === anneeFiltre && new Date(f.date).getMonth() === m)
-      const dMois = depenses.filter(d => new Date(d.date).getFullYear() === anneeFiltre && new Date(d.date).getMonth() === m)
-      const caHT = fMois.reduce((s, f) => s + calculerTotaux(f.factures_lignes, f.remise, tva, f.tva_applicable).baseHT, 0)
+      const fMois = factures.filter(f => moisDe(f.date).annee === anneeFiltre && moisDe(f.date).mois === m)
+      const dMois = depenses.filter(d => moisDe(d.date).annee === anneeFiltre && moisDe(d.date).mois === m)
+      const caHT = fMois.reduce((s, f) => s + signeDocument(f) * calculerTotaux(f.factures_lignes, f.remise, tva, f.tva_applicable).baseHT, 0)
       const dep = dMois.reduce((s, d) => s + d.montant, 0)
       return { mois: MOIS_COURT[m], caHT, dep, resultat: caHT - dep }
     })
@@ -177,8 +178,9 @@ export default function ComptaClient({ depenses: initialDep, factures, paiements
   const delDep = async (d: Depense) => {
     if (!confirm(`Supprimer "${d.libelle}" ?`)) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('depenses').delete().eq('id', d.id)
+    const { data: supprime, error: e } = await sb.from('depenses').delete().eq('id', d.id).select('id')
     if (e) { alert('Suppression impossible : ' + e.message); return }
+    if (!ligneSupprimee(supprime)) { alert('Suppression refusée : votre compte ne peut pas supprimer cette dépense.'); return }
     setDepenses(prev => prev.filter(x => x.id !== d.id)); router.refresh()
   }
 
@@ -691,8 +693,8 @@ export default function ComptaClient({ depenses: initialDep, factures, paiements
             </tr></thead>
             <tbody>
               {dataAnnee.map((m, i) => {
-                const tvaM = factures.filter(f => new Date(f.date).getFullYear() === anneeFiltre && new Date(f.date).getMonth() === i)
-                  .reduce((s, f) => s + calculerTotaux(f.factures_lignes, f.remise, tva, f.tva_applicable).tva, 0)
+                const tvaM = factures.filter(f => moisDe(f.date).annee === anneeFiltre && moisDe(f.date).mois === i)
+                  .reduce((s, f) => s + signeDocument(f) * calculerTotaux(f.factures_lignes, f.remise, tva, f.tva_applicable).tva, 0)
                 const marge = m.caHT > 0 ? Math.round(m.resultat / m.caHT * 100) : 0
                 return (
                   <tr key={i} onClick={() => { setMoisFiltre(i); setTab('dashboard') }}
@@ -715,7 +717,7 @@ export default function ComptaClient({ depenses: initialDep, factures, paiements
                 <td style={{ ...td, color: '#fff' }}>TOTAL {anneeFiltre}</td>
                 <td style={{ ...td, textAlign: 'right', color: '#6bb5f5' }}>{formatFCFA(totAnnee.caHT)}</td>
                 <td style={{ ...td, textAlign: 'right', color: '#ffc16b' }}>
-                  {formatFCFA(factures.filter(f => new Date(f.date).getFullYear() === anneeFiltre).reduce((s, f) => s + calculerTotaux(f.factures_lignes, f.remise, tva, f.tva_applicable).tva, 0))}
+                  {formatFCFA(factures.filter(f => moisDe(f.date).annee === anneeFiltre).reduce((s, f) => s + signeDocument(f) * calculerTotaux(f.factures_lignes, f.remise, tva, f.tva_applicable).tva, 0))}
                 </td>
                 <td style={{ ...td, textAlign: 'right', color: '#fff' }}>{formatFCFA(totAnnee.caHT)}</td>
                 <td style={{ ...td, textAlign: 'right', color: '#ff8080' }}>{formatFCFA(totAnnee.dep)}</td>

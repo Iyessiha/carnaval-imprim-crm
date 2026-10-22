@@ -1,8 +1,10 @@
+import { exigerModule } from '@/lib/acces-serveur'
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import BonsCaisseClient from './BonsCaisseClient'
 export const metadata = { title: 'Bons de caisse — Carnaval Imprim CRM' }
 export default async function BonsCaissePage() {
+  await exigerModule('bons-caisse')
   const supabase = await createClient()
   const [{ data: operations }, { data: entData }] = await Promise.all([
     supabase.from('caisse_operations')

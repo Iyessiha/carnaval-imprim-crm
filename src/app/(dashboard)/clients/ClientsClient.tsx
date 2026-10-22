@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import { getSupabase } from '@/lib/supabase/any'
 import { formatDateFR } from '@/lib/utils'
 import { Plus, Search, Pencil, Trash2, X, Check, Users, Building2, Phone, Mail, MapPin } from 'lucide-react'
+import { messageSuppression, ligneSupprimee } from '@/lib/suppression'
 
 interface Client {
   id: string; nom: string; contact: string | null; telephone: string | null
@@ -114,8 +115,9 @@ export default function ClientsClient({ clients: initial }: { clients: Client[] 
   const del = async (c: Client) => {
     if (!confirm(`Supprimer "${c.nom}" ?`)) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('clients').delete().eq('id', c.id)
-    if (e) { alert(e.message); return }
+    const { data: supprime, error: e } = await sb.from('clients').delete().eq('id', c.id).select('id')
+    if (e) { alert(messageSuppression(e, `« ${c.nom} »`)); return }
+    if (!ligneSupprimee(supprime)) { alert('Suppression refusée : votre compte ne peut pas supprimer ce client.'); return }
     setClients(prev => prev.filter(x => x.id !== c.id)); router.refresh()
   }
 

@@ -8,6 +8,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
 import { Check, Pencil, Trash2, Phone, Mail } from 'lucide-react'
+import { messageSuppression, ligneSupprimee } from '@/lib/suppression'
 
 type Fournisseur = {
   id: string; nom: string; contact: string | null; telephone: string | null
@@ -62,8 +63,9 @@ export default function FournisseursClient({ fournisseurs: initial }: { fourniss
   const del = async (f: Fournisseur) => {
     if (!confirm(`Supprimer "${f.nom}" ?`)) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('fournisseurs').delete().eq('id', f.id)
-    if (e) { alert('Suppression impossible : ' + e.message); return }
+    const { data: supprime, error: e } = await sb.from('fournisseurs').delete().eq('id', f.id).select('id')
+    if (e) { alert(messageSuppression(e, `« ${f.nom} »`)); return }
+    if (!ligneSupprimee(supprime)) { alert('Suppression refusée : votre compte ne peut pas supprimer ce fournisseur.'); return }
     setFournisseurs(prev => prev.filter(x => x.id !== f.id)); router.refresh()
   }
 

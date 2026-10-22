@@ -1,8 +1,10 @@
+import { exigerModule } from '@/lib/acces-serveur'
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import DevisClient from './DevisClient'
 export const metadata = { title: 'Devis — Carnaval Imprim CRM' }
 export default async function DevisPage() {
+  await exigerModule('devis')
   const supabase = await createClient()
   const [
     { data: devis },

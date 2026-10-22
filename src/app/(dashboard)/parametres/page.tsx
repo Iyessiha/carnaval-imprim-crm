@@ -1,36 +1,23 @@
-export const dynamic = 'force-dynamic'
+import { exigerModule, chargerSession } from '@/lib/acces-serveur'
 import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
 import ParametresClient from './ParametresClient'
 
+export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Paramètres — Carnaval Imprim CRM' }
 
 export default async function ParametresPage() {
+  await exigerModule('parametres')
+  const { user, profil } = await chargerSession()
   const supabase = await createClient()
 
-  // 1. Récupérer l'utilisateur connecté
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
-
-  // 2. Lire son profil directement par id (plus fiable que getUser seul)
-  const { data: monProfilRaw } = await supabase
-    .from('profiles')
-    .select('role, actif')
-    .eq('id', user.id)
-    .single()
-  const monProfil = monProfilRaw as { role: string; actif: boolean } | null
-
-  // 3. isAdmin : vérifié en base, pas depuis le JWT
-  const isAdmin = monProfil ? monProfil.role === 'Admin' && monProfil.actif === true : false
-
-  // 4. Charger les autres données en parallèle
+  // La clé API FNE n'est JAMAIS lue ni envoyée au navigateur : on ne transmet que son état.
   const [
     { data: entrepriseData },
     { data: fneData },
     { data: profiles },
   ] = await Promise.all([
-    supabase.from('entreprise').select('*').single(),
-    supabase.from('fne_config').select('*').limit(1).maybeSingle(),
+    supabase.from('entreprise').select('*').limit(1).maybeSingle(),
+    supabase.from('fne_config').select('id, mode, url_prod, url_test, actif').limit(1).maybeSingle(),
     supabase.from('profiles')
       .select('id, nom, email, role, actif, poste, telephone, permissions, derniere_connexion, created_at')
       .order('created_at'),
@@ -38,11 +25,11 @@ export default async function ParametresPage() {
 
   return (
     <ParametresClient
-      entreprise={(entrepriseData || {}) as Record<string, unknown>}
-      fneConfig={(fneData || {}) as Record<string, unknown>}
+      entreprise={(entrepriseData || null) as Record<string, unknown> | null}
+      fneConfig={(fneData || null) as Record<string, unknown> | null}
       profiles={profiles || []}
-      currentUserId={user.id}
-      isAdmin={isAdmin}
+      currentUserId={user?.id ?? ''}
+      isAdmin={profil?.role === 'Admin' && profil.actif === true}
     />
   )
 }

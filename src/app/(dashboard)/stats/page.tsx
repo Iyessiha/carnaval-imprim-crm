@@ -1,11 +1,13 @@
+import { exigerModule } from '@/lib/acces-serveur'
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import StatsClient from './StatsClient'
 export const metadata = { title: 'Statistiques — Carnaval Imprim CRM' }
 export default async function StatsPage() {
+  await exigerModule('stats')
   const supabase = await createClient()
   const [{ data: factures }, { data: devis }, { data: productions }, { data: clients }, { data: entData }] = await Promise.all([
-    supabase.from('factures').select('id, date, tva_applicable, remise, fne_certifiee, client_id, factures_lignes(qte,pu,designation), paiements(montant,date), clients(nom)'),
+    supabase.from('factures').select('id, date, tva_applicable, remise, fne_certifiee, client_id, is_avoir, factures_lignes(qte,pu,designation), paiements(montant,date), clients(nom)'),
     supabase.from('devis').select('id, date, statut, tva_applicable, remise, devis_lignes(qte,pu), clients(nom)'),
     supabase.from('productions').select('id, date, statut, quantite, caracteristique, clients(nom)'),
     supabase.from('clients').select('id, nom, type, created_at'),

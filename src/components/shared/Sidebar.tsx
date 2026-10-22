@@ -45,10 +45,23 @@ const bottomNav = [
   { href: '/caisse',     label: 'Caisse',     icon: Banknote },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ routes }: { routes: string[] }) {
   const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
+
+  // Seules les entrées auxquelles le compte a droit sont affichées ; un séparateur
+  // n'apparaît que s'il reste au moins une entrée dans sa section.
+  const navVisible = nav.filter((item, idx) => {
+    if (!('divider' in item)) return routes.includes(item.href!)
+    for (let i = idx + 1; i < nav.length; i++) {
+      const suivant = nav[i]
+      if ('divider' in suivant) return false
+      if (routes.includes(suivant.href!)) return true
+    }
+    return false
+  })
+  const bottomVisible = bottomNav.filter(item => routes.includes(item.href))
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth <= 768)
@@ -83,7 +96,7 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav style={{ flex:1, overflowY:'auto', padding:'6px 8px', display:'flex', flexDirection:'column', gap:1 }}>
-        {nav.map((item, idx) => {
+        {navVisible.map((item, idx) => {
           if ('divider' in item) return (
             <div key={idx} style={{ fontSize:9, fontWeight:800, color:'#C2117A', textTransform:'uppercase', letterSpacing:'1.5px', padding:'10px 8px 3px', marginTop:2 }}>
               {item.divider}
@@ -165,7 +178,7 @@ export default function Sidebar() {
       {/* Bottom nav */}
       {isMobile && (
         <nav className="bottom-nav">
-          {bottomNav.map(item => {
+          {bottomVisible.map(item => {
             const active = pathname===item.href||pathname.startsWith(item.href+'/')
             return (
               <Link key={item.href} href={item.href} className={`bottom-nav-item ${active?'active':''}`}>
