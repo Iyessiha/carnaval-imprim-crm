@@ -18,6 +18,7 @@ export default function LoginPage() {
       const { data, error: err } = await supabase.auth.signInWithPassword({ email, password })
       if (err) { setError('Email ou mot de passe incorrect.'); setLoading(false); return }
       if (data.session) window.location.href = '/dashboard'
+      else { setError('Connexion impossible : session non créée. Réessayez.'); setLoading(false) }
     } catch {
       setError('Une erreur est survenue. Réessayez.')
       setLoading(false)

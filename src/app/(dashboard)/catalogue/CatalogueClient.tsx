@@ -8,6 +8,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
 import { Check, Pencil, Trash2, Package, ToggleLeft, ToggleRight } from 'lucide-react'
+import { messageSuppression, ligneSupprimee } from '@/lib/suppression'
 
 const CATEGORIES = ['Supports imprimés', 'Grand format', 'Textile', 'Objets pub', 'Service'] as const
 const CAT_COLORS: Record<string, string> = {
@@ -61,10 +62,11 @@ export default function CatalogueClient({ produits: initial, types }: {
     if (!form.nom?.trim()) { setError('Le nom est obligatoire.'); return }
     setLoading(true); setError('')
     const sb = getSupabase()
+    if (!form.nom?.trim()) { setError('Le nom du produit est obligatoire.'); return }
     const body = {
-      nom: form.nom, categorie: form.categorie,
+      nom: form.nom.trim(), categorie: form.categorie,
       type_impression_id: form.type_impression_id || null,
-      prix_base: form.prix_base || 0,
+      prix_base: Math.max(0, Math.round(Number(form.prix_base) || 0)),
       unite: form.unite || 'unité',
       description: form.description || null,
       actif: form.actif ?? true,
@@ -93,8 +95,9 @@ export default function CatalogueClient({ produits: initial, types }: {
   const del = async (p: Produit) => {
     if (!confirm(`Supprimer "${p.nom}" ?`)) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('produits').delete().eq('id', p.id)
-    if (e) { alert('Suppression impossible (produit utilisé dans un devis ou une facture ?) : ' + e.message); return }
+    const { data: supprime, error: e } = await sb.from('produits').delete().eq('id', p.id).select('id')
+    if (e) { alert(messageSuppression(e, `« ${p.nom} »`)); return }
+    if (!ligneSupprimee(supprime)) { alert('Suppression refusée : votre compte ne peut pas supprimer ce produit.'); return }
     setProduits(prev => prev.filter(x => x.id !== p.id)); router.refresh()
   }
 

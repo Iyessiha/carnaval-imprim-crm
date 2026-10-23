@@ -50,11 +50,16 @@ export default function LignesEditor({
   const set = (i: number, k: keyof Ligne, v: string | number) =>
     onChange(lignes.map((l, j) => j === i ? { ...l, [k]: v } : l))
 
+  // Quantité et prix : jamais négatifs ; le prix est un montant entier (FCFA).
+  const nombre = (v: string) => Math.max(0, parseFloat(v) || 0)
+
   const add = () => onChange([...lignes, { designation: '', qte: 1, pu: 0 }])
   const rm  = (i: number) => onChange(lignes.filter((_, j) => j !== i))
 
   const handleDesignation = (i: number, val: string) => {
-    set(i, 'designation', val)
+    // Saisie libre : la ligne ne pointe plus vers un produit (sinon la clé produit_id resterait
+    // celle du choix précédent). Elle n'est rattachée qu'en choisissant une suggestion.
+    onChange(lignes.map((l, j) => j === i ? { ...l, designation: val, produit_id: undefined } : l))
     setActiveIdx(i)
     setQuery(val)
     if (val.length >= 1) {
@@ -160,14 +165,14 @@ export default function LignesEditor({
               type="number" min="1" step="1"
               style={{ ...inputStyle, padding: '9px 8px', textAlign: 'center' as const }}
               value={l.qte || ''}
-              onChange={e => set(i, 'qte', parseFloat(e.target.value) || 0)}
+              onChange={e => set(i, 'qte', nombre(e.target.value))}
             />
             {/* Prix unitaire */}
             <input
               type="number" min="0" step="500"
               style={{ ...inputStyle, padding: '9px 8px', textAlign: 'right' as const }}
               value={l.pu || ''}
-              onChange={e => set(i, 'pu', parseFloat(e.target.value) || 0)}
+              onChange={e => set(i, 'pu', Math.round(nombre(e.target.value)))}
             />
             {/* Supprimer */}
             <button

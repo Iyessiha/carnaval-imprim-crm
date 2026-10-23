@@ -1,3 +1,4 @@
+import { exigerModule } from '@/lib/acces-serveur'
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import FournisseursClient from './FournisseursClient'
@@ -5,6 +6,7 @@ import FournisseursClient from './FournisseursClient'
 export const metadata = { title: 'Fournisseurs — Carnaval Imprim CRM' }
 
 export default async function FournisseursPage() {
+  await exigerModule('fournisseurs')
   const supabase = await createClient()
   const { data: fournisseurs } = await supabase.from('fournisseurs').select('*').order('nom')
   return <FournisseursClient fournisseurs={fournisseurs || []} />

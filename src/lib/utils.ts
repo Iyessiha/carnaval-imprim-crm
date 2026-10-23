@@ -58,4 +58,20 @@ export const STATUT_COLORS: Record<string, string> = {
 }
 
 // ── Date du jour ISO ────────────────────────────────────────────
-export const today = () => new Date().toISOString().slice(0, 10)
+// Date du jour (AAAA-MM-JJ) en heure locale : toISOString() donnerait la date UTC, décalée la nuit.
+export const today = () => {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+// ── Année et mois d'une date ISO « AAAA-MM-JJ » ─────────────────
+// `new Date('2026-03-01')` est lu en UTC : selon le fuseau du navigateur, la date peut
+// basculer sur le mois précédent. On découpe la chaîne à la place. mois : 0 = janvier.
+export function moisDe(dateIso: string | null | undefined): { annee: number; mois: number } {
+  const [annee, mois] = (dateIso || '').slice(0, 10).split('-').map(Number)
+  return { annee: annee || 0, mois: (mois || 1) - 1 }
+}
+
+// ── Signe d'un document : un avoir (note de crédit) se soustrait du chiffre d'affaires ──
+export const signeDocument = (f: { is_avoir?: boolean | null }) => (f.is_avoir ? -1 : 1)

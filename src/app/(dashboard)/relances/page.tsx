@@ -1,8 +1,10 @@
+import { exigerModule } from '@/lib/acces-serveur'
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
 import RelancesClient from './RelancesClient'
 export const metadata = { title: 'Relances — Carnaval Imprim CRM' }
 export default async function RelancesPage() {
+  await exigerModule('relances')
   const supabase = await createClient()
   const [{ data: factures }, { data: entData }] = await Promise.all([
     supabase.from('factures').select('*, factures_lignes(qte,pu), paiements(montant,date,mode), clients(nom,telephone,email,adresse)').order('date', { ascending: false }),

@@ -94,7 +94,8 @@ export default function DevisClient({ devis: initial, clients, produits, tarifs 
       }
       setDevis(prev => prev.map(d => d.id === sel.id ? { ...d, ...form, devis_lignes: devis_lignes || [], clients: { nom: cNom } } as Devis : d))
     } else {
-      const { data: numero } = await sb.rpc('next_numero', { p_type: 'DV', p_annee: new Date().getFullYear() })
+      const { data: numero, error: eN } = await sb.rpc('next_numero', { p_type: 'DV', p_annee: new Date().getFullYear() })
+      if (eN || !numero) { setError('Numéro de devis impossible à générer : ' + (eN?.message || 'réponse vide')); setLoading(false); return }
       const { data: created, error: e } = await sb.from('devis').insert({ ...body, numero }).select().single()
       if (e) { setError(e.message); setLoading(false); return }
       const { error: eL } = await sb.from('devis_lignes').insert(lignesPayload(created.id, devis_lignes || []))
@@ -110,39 +111,36 @@ export default function DevisClient({ devis: initial, clients, produits, tarifs 
   const del = async (d: Devis) => {
     if (!confirm(`Supprimer ${d.numero} ?`)) return
     const sb = getSupabase()
-    await sb.from('devis').delete().eq('id', d.id)
+    const { data: supprime, error: e } = await sb.from('devis').delete().eq('id', d.id).select('id')
+    if (e) {
+      alert(e.message.includes('foreign key')
+        ? `${d.numero} est lié à une facture ou à une production : suppression impossible.`
+        : 'Suppression impossible : ' + e.message)
+      return
+    }
+    if (!supprime?.length) { alert('Suppression refusée : votre compte ne peut pas supprimer ce devis.'); return }
     setDevis(prev => prev.filter(x => x.id !== d.id)); router.refresh()
   }
 
+  // Conversion atomique : la base crée la facture et ses lignes dans une seule transaction,
+  // et renvoie la facture existante si ce devis a déjà été converti (pas de doublon).
   const toFacture = async (d: Devis) => {
     if (!confirm(`Convertir ${d.numero} en facture ?`)) return
     setLoading(true)
     const sb = getSupabase()
-    const { data: num } = await sb.rpc('next_numero', { p_type: 'FA', p_annee: new Date().getFullYear() })
-    const client = clients.find(c => c.id === d.client_id)
-    const { data: facture, error: e } = await sb.from('factures').insert({
-      numero: num, client_id: d.client_id, devis_id: d.id, date: today(),
-      remise: d.remise, tva_applicable: d.tva_applicable, notes: d.notes,
-      template_fne: client?.template_fne_defaut || 'B2B', payment_method_fne: 'cash',
-    }).select().single()
-    if (e) { alert(e.message); setLoading(false); return }
-    if (d.devis_lignes?.length) {
-      const { error: eL } = await sb.from('factures_lignes').insert(d.devis_lignes.map((l: Ligne, i: number) => ({
-        facture_id: facture.id, designation: l.designation, qte: l.qte, pu: l.pu,
-        remise_ligne: l.remise_ligne || 0, produit_id: l.produit_id || null, taxes: ['TVA'], ordre: i,
-      })))
-      if (eL) { alert('Facture créée mais lignes non copiées : ' + eL.message); setLoading(false); return }
-    }
-    await sb.from('devis').update({ statut: 'Accepté' }).eq('id', d.id)
+    const { data: facture, error: e } = await sb.rpc('creer_facture_depuis_devis', { p_devis_id: d.id }).single()
+    if (e || !facture) { alert('Conversion impossible : ' + (e?.message || 'réponse vide')); setLoading(false); return }
+    const fac = facture as { numero: string }
     setDevis(prev => prev.map(x => x.id === d.id ? { ...x, statut: 'Accepté' } : x))
     setLoading(false); setModal(null)
-    alert(`✅ Facture ${num} créée !`); router.refresh()
+    alert(`✅ Facture ${fac.numero} disponible (créée ou déjà existante pour ce devis).`); router.refresh()
   }
 
   const dupliquer = async (d: Devis) => {
     setLoading(true)
     const sb = getSupabase()
-    const { data: num } = await sb.rpc('next_numero', { p_type: 'DV', p_annee: new Date().getFullYear() })
+    const { data: num, error: eN } = await sb.rpc('next_numero', { p_type: 'DV', p_annee: new Date().getFullYear() })
+    if (eN || !num) { alert('Numéro de devis impossible à générer : ' + (eN?.message || 'réponse vide')); setLoading(false); return }
     const { data: created, error: e } = await sb.from('devis').insert({
       numero: num, client_id: d.client_id, date: today(),
       statut: 'Brouillon', remise: d.remise, tva_applicable: d.tva_applicable, notes: d.notes,

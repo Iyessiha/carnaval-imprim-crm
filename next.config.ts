@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  typescript: { ignoreBuildErrors: true },
+  // Les erreurs TypeScript bloquent le build (le code passe `tsc --noEmit`).
+  typescript: { ignoreBuildErrors: false },
   eslint: { ignoreDuringBuilds: true },
   images: {
     remotePatterns: [

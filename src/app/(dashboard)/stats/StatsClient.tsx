@@ -1,10 +1,10 @@
 'use client'
 import { useState, useMemo } from 'react'
-import { formatFCFA, calculerTotaux } from '@/lib/utils'
+import { formatFCFA, calculerTotaux, moisDe, signeDocument } from '@/lib/utils'
 
 type FL = { qte: number; pu: number; designation?: string }
 type Pmt = { montant: number; date: string }
-type Facture = { id: string; date: string; tva_applicable: boolean; remise: number; fne_certifiee: boolean; client_id: string; factures_lignes: FL[]; paiements: Pmt[]; clients: { nom: string } | null }
+type Facture = { id: string; date: string; tva_applicable: boolean; remise: number; fne_certifiee: boolean; client_id: string; is_avoir?: boolean | null; factures_lignes: FL[]; paiements: Pmt[]; clients: { nom: string } | null }
 type Devis = { id: string; date: string; statut: string; tva_applicable: boolean; remise: number; devis_lignes: FL[]; clients: { nom: string } | null }
 type Production = { id: string; date: string; statut: string; quantite: number; caracteristique: string; clients: { nom: string } | null }
 type Client = { id: string; nom: string; type: string; created_at: string }
@@ -20,11 +20,11 @@ export default function StatsClient({ factures, devis, productions, clients, tau
   // CA par mois
   const caParMois = useMemo(() => {
     const mois = Array(12).fill(0).map((_, i) => ({ mois: MOIS[i], caTotal: 0, caEnc: 0 }))
-    factures.filter(f => new Date(f.date).getFullYear() === anneeFiltre).forEach(f => {
-      const m = new Date(f.date).getMonth()
+    factures.filter(f => moisDe(f.date).annee === anneeFiltre).forEach(f => {
+      const m = moisDe(f.date).mois
       const t = calculerTotaux(f.factures_lignes, f.remise, tauxTva, f.tva_applicable)
       const enc = f.paiements.reduce((s, p) => s + p.montant, 0)
-      mois[m].caTotal += t.ttc
+      mois[m].caTotal += signeDocument(f) * t.ttc
       mois[m].caEnc += enc
     })
     return mois
@@ -33,11 +33,11 @@ export default function StatsClient({ factures, devis, productions, clients, tau
   // Top clients
   const topClients = useMemo(() => {
     const map: Record<string, { nom: string; ca: number; nb: number }> = {}
-    factures.filter(f => new Date(f.date).getFullYear() === anneeFiltre).forEach(f => {
+    factures.filter(f => moisDe(f.date).annee === anneeFiltre).forEach(f => {
       const id = f.client_id
       const t = calculerTotaux(f.factures_lignes, f.remise, tauxTva, f.tva_applicable)
       if (!map[id]) map[id] = { nom: f.clients?.nom || '—', ca: 0, nb: 0 }
-      map[id].ca += t.ttc; map[id].nb++
+      map[id].ca += signeDocument(f) * t.ttc; map[id].nb++
     })
     return Object.values(map).sort((a, b) => b.ca - a.ca).slice(0, 8)
   }, [factures, anneeFiltre, tauxTva])
@@ -45,7 +45,7 @@ export default function StatsClient({ factures, devis, productions, clients, tau
   // Top produits
   const topProduits = useMemo(() => {
     const map: Record<string, { designation: string; qte: number; ca: number }> = {}
-    factures.filter(f => new Date(f.date).getFullYear() === anneeFiltre).forEach(f => {
+    factures.filter(f => moisDe(f.date).annee === anneeFiltre).forEach(f => {
       f.factures_lignes.forEach(l => {
         const key = l.designation || '—'
         if (!map[key]) map[key] = { designation: key, qte: 0, ca: 0 }
@@ -57,13 +57,13 @@ export default function StatsClient({ factures, devis, productions, clients, tau
 
   // KPIs globaux
   const kpis = useMemo(() => {
-    const fAnnee = factures.filter(f => new Date(f.date).getFullYear() === anneeFiltre)
-    const caTotal = fAnnee.reduce((s, f) => s + calculerTotaux(f.factures_lignes, f.remise, tauxTva, f.tva_applicable).ttc, 0)
+    const fAnnee = factures.filter(f => moisDe(f.date).annee === anneeFiltre)
+    const caTotal = fAnnee.reduce((s, f) => s + signeDocument(f) * calculerTotaux(f.factures_lignes, f.remise, tauxTva, f.tva_applicable).ttc, 0)
     const caEnc = fAnnee.reduce((s, f) => s + f.paiements.reduce((a, p) => a + p.montant, 0), 0)
     const nbFacCertifiees = fAnnee.filter(f => f.fne_certifiee).length
-    const devisAnnee = devis.filter(d => new Date(d.date).getFullYear() === anneeFiltre)
+    const devisAnnee = devis.filter(d => moisDe(d.date).annee === anneeFiltre)
     const txConversion = devisAnnee.length ? Math.round(devisAnnee.filter(d => d.statut === 'Accepté').length / devisAnnee.length * 100) : 0
-    const prodAnnee = productions.filter(p => new Date(p.date).getFullYear() === anneeFiltre)
+    const prodAnnee = productions.filter(p => moisDe(p.date).annee === anneeFiltre)
     const nbLivrees = prodAnnee.filter(p => p.statut === 'Livré').length
     return { caTotal, caEnc, caImp: caTotal - caEnc, nbFacCertifiees, txConversion, nbDevis: devisAnnee.length, nbProd: prodAnnee.length, nbLivrees }
   }, [factures, devis, productions, anneeFiltre, tauxTva])
@@ -205,8 +205,8 @@ export default function StatsClient({ factures, devis, productions, clients, tau
         <h2 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 16px' }}>🖨️ Productions {anneeFiltre}</h2>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           {['En attente','En production','Terminé','Livré'].map(statut => {
-            const count = productions.filter(p => p.statut === statut && new Date(p.date).getFullYear() === anneeFiltre).length
-            const totalQte = productions.filter(p => p.statut === statut && new Date(p.date).getFullYear() === anneeFiltre).reduce((s, p) => s + (p.quantite || 0), 0)
+            const count = productions.filter(p => p.statut === statut && moisDe(p.date).annee === anneeFiltre).length
+            const totalQte = productions.filter(p => p.statut === statut && moisDe(p.date).annee === anneeFiltre).reduce((s, p) => s + (p.quantite || 0), 0)
             const colors: Record<string, [string,string]> = {
               'En attente': ['#FEF3E2','#F39200'], 'En production': ['#E5EDF8','#2A5FA5'],
               'Terminé': ['#F0E8F8','#7B2FA5'], 'Livré': ['#E8F7EE','#3A9A5C']

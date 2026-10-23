@@ -1,6 +1,7 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { getSupabase } from '@/lib/supabase/any'
+import { PERMS_DEFAUT, ROLES, type Role } from '@/lib/acces'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
 import Modal from '@/components/ui/Modal'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
@@ -17,9 +18,6 @@ type Profile = {
   permissions?: Record<string, boolean>
   derniere_connexion?: string; created_at: string
 }
-
-const ROLES = ['Admin', 'Secrétaire/Comptable', 'Production'] as const
-type Role = typeof ROLES[number]
 
 const ROLE_COLORS: Record<Role, { bg: string; color: string }> = {
   'Admin':                { bg: '#FDE8E8', color: '#D14343' },
@@ -44,13 +42,6 @@ const MODULES = [
   { key: 'parametres',   label: 'Paramètres',    icon: '⚙️' },
 ]
 
-const PERMS_DEFAUT: Record<Role, Record<string, boolean>> = {
-  'Admin':                Object.fromEntries(MODULES.map(m => [m.key, true])),
-  // Fusion des anciens accès Commercial + Comptabilité : un même poste fait les deux
-  'Secrétaire/Comptable': { clients:true, devis:true, factures:true, relances:true, production:false, livraisons:true, bons:false, catalogue:true, fournisseurs:true, comptabilite:true, caisse:true, 'bons-caisse':true, stats:true, parametres:false },
-  'Production':           { clients:false, devis:false, factures:false, relances:false, production:true, livraisons:true, bons:true, catalogue:true, fournisseurs:true, comptabilite:false, caisse:false, 'bons-caisse':false, stats:false, parametres:false },
-}
-
 // ── Composant principal ────────────────────────────────────────────
 export default function ParametresClient({
   entreprise: initial, fneConfig: initialFne,
@@ -64,24 +55,8 @@ export default function ParametresClient({
 }) {
   const [tab, setTab] = useState<'entreprise' | 'fne' | 'users'>('entreprise')
   const [profiles, setProfiles] = useState<Profile[]>(initialProfiles)
-  // Vérification côté client — plus fiable que le prop serveur
-  const [isAdmin, setIsAdmin] = useState(isAdminProp)
-  
-  useEffect(() => {
-    const checkAdmin = async () => {
-      const sb = getSupabase()
-      const { data: { user } } = await sb.auth.getUser()
-      if (!user) return
-      const { data: profil } = await sb.from('profiles')
-        .select('role, actif')
-        .eq('id', user.id)
-        .single()
-      if (profil?.role === 'Admin' && profil?.actif) {
-        setIsAdmin(true)
-      }
-    }
-    checkAdmin()
-  }, [])
+  // Droits vérifiés côté serveur (page + API) : le navigateur ne décide pas.
+  const isAdmin = isAdminProp
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState('')
   const [error, setError] = useState('')
@@ -108,11 +83,13 @@ export default function ParametresClient({
   })
 
   // ── Formulaire FNE ────────────────────────────────────────────
+  // La clé API n'est jamais relue depuis la base : le champ reste vide, et seul l'état « enregistrée » est affiché.
   const [fne, setFne] = useState({
-    api_key:  String(initialFne?.api_key  || ''),
+    api_key:  '',
     url_prod: String(initialFne?.url_prod || ''),
     mode:     String(initialFne?.mode     || 'test'),
   })
+  const cleFneEnregistree = !!initialFne?.actif
 
   // ── Formulaire utilisateur ─────────────────────────────────────
   const emptyUser = { nom: '', email: '', password: '', role: 'Secrétaire/Comptable' as Role, poste: '', telephone: '' }
@@ -140,37 +117,61 @@ export default function ParametresClient({
     setRefreshing(false)
   }
 
+  const MSG_REFUS = "Modification refusée : votre compte n'a pas le droit de modifier ces informations."
+
+  // Appel de l'API d'administration (création, mot de passe, accès, permissions)
+  const appelAdmin = async (url: string, methode: 'POST' | 'PATCH', corps: Record<string, unknown>) => {
+    const res = await fetch(url, {
+      method: methode,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corps),
+    })
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || 'Opération impossible')
+    return data
+  }
+
   // ── Sauvegarder Entreprise ─────────────────────────────────────
   const saveEnt = async () => {
+    const tva = parseFloat(ent.taux_tva)
+    if (!(tva >= 0 && tva <= 100)) { setError('Le taux de TVA doit être compris entre 0 et 100.'); return }
+    if (!initial?.id) { setError('Fiche entreprise introuvable : contactez l\'administrateur.'); return }
     setSaving(true); setError('')
     const sb = getSupabase()
-    const { error: e } = await sb.from('entreprise').update({
+    const { data: ecrit, error: e } = await sb.from('entreprise').update({
       nom: ent.nom, forme: ent.forme,
       capital: Number(ent.capital) || 1000000,
       siege: ent.siege, tel: ent.tel, email: ent.email || null,
       rc: ent.rc, ncc: ent.ncc, regime: ent.regime,
       centre_impots: ent.centre_impots,
-      taux_tva: parseFloat(ent.taux_tva) || 18,
+      taux_tva: tva,
       fne_point_of_sale: ent.fne_point_of_sale || null,
       fne_establishment: ent.fne_establishment || null,
-    }).eq('id', String(initial?.id || ''))
+    }).eq('id', String(initial.id)).select('id')
     setSaving(false)
     if (e) { setError(e.message); return }
+    if (!ecrit?.length) { setError(MSG_REFUS); return }
     flash('✅ Informations entreprise sauvegardées')
   }
 
   // ── Sauvegarder FNE ───────────────────────────────────────────
   const saveFne = async () => {
+    const url = fne.url_prod.trim()
+    if (url && !/^https:\/\//.test(url)) { setError('L\'URL de production doit commencer par https://'); return }
     setSaving(true); setError('')
     const sb = getSupabase()
-    const { error: e } = await sb.from('fne_config').update({
-      api_key:  fne.api_key  || null,
-      url_prod: fne.url_prod || null,
-      mode:     fne.mode,
-      actif:    !!(fne.api_key),
-    }).gte('created_at', '2000-01-01')
+    const { data: ligne } = await sb.from('fne_config').select('id').limit(1).maybeSingle()
+    if (!ligne?.id) { setSaving(false); setError('Configuration FNE introuvable : contactez l\'administrateur.'); return }
+
+    const modif: Record<string, unknown> = { mode: fne.mode, url_prod: url || null }
+    // La clé n'est envoyée que si une nouvelle valeur est saisie ; elle reste en base, côté serveur.
+    if (fne.api_key.trim()) { modif.api_key = fne.api_key.trim(); modif.actif = true }
+
+    const { data: ecrit, error: e } = await sb.from('fne_config').update(modif).eq('id', ligne.id).select('id')
     setSaving(false)
     if (e) { setError(e.message); return }
+    if (!ecrit?.length) { setError(MSG_REFUS); return }
+    setFne(p => ({ ...p, api_key: '' }))
     flash('✅ Configuration FNE/DGI sauvegardée')
   }
 
@@ -181,23 +182,20 @@ export default function ParametresClient({
       setError('Le mot de passe doit faire au moins 8 caractères.'); return
     }
     setSaving(true); setError('')
-    const sb = getSupabase()
-    const { data: newId, error: e } = await sb.rpc('create_user_with_profile', {
-      p_email:     formUser.email.trim() ? formUser.email.trim().toLowerCase() : null,
-      p_password:  formUser.password,
-      p_nom:       formUser.nom.trim(),
-      p_role:      formUser.role,
-      p_poste:     formUser.poste     || null,
-      p_telephone: formUser.telephone || null,
-    })
-    if (e) { setError(e.message); setSaving(false); return }
-
-    // Appliquer les permissions par défaut du rôle
-    const { error: eP } = await sb.from('profiles').update({
-      permissions: PERMS_DEFAUT[formUser.role],
-    }).eq('id', newId)
-    if (eP) { setError('Utilisateur créé mais permissions par défaut non appliquées : ' + eP.message) }
-
+    try {
+      await appelAdmin('/api/admin/utilisateurs', 'POST', {
+        nom:       formUser.nom.trim(),
+        email:     formUser.email.trim(),
+        password:  formUser.password,
+        role:      formUser.role,
+        poste:     formUser.poste.trim()     || null,
+        telephone: formUser.telephone.trim() || null,
+        permissions: PERMS_DEFAUT[formUser.role],
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Création impossible')
+      setSaving(false); return
+    }
     await refreshProfiles()
     setSaving(false)
     closeModal()
@@ -209,17 +207,20 @@ export default function ParametresClient({
     if (!selUser) return
     if (!formUser.nom.trim()) { setError('Le nom est obligatoire.'); return }
     setSaving(true); setError('')
-    const sb = getSupabase()
-    const { error: e } = await sb.from('profiles').update({
-      nom:       formUser.nom.trim(),
-      role:      formUser.role,
-      poste:     formUser.poste     || null,
-      telephone: formUser.telephone || null,
-    }).eq('id', selUser.id)
-    if (e) { setError(e.message); setSaving(false); return }
+    try {
+      await appelAdmin(`/api/admin/utilisateurs/${selUser.id}`, 'PATCH', {
+        nom:       formUser.nom.trim(),
+        role:      formUser.role,
+        poste:     formUser.poste.trim()     || null,
+        telephone: formUser.telephone.trim() || null,
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Modification impossible')
+      setSaving(false); return
+    }
     setProfiles(prev => prev.map(p =>
       p.id === selUser.id
-        ? { ...p, nom: formUser.nom, role: formUser.role, poste: formUser.poste, telephone: formUser.telephone }
+        ? { ...p, nom: formUser.nom.trim(), role: formUser.role, poste: formUser.poste, telephone: formUser.telephone }
         : p
     ))
     setSaving(false); closeModal()
@@ -233,13 +234,13 @@ export default function ParametresClient({
       setError('Le mot de passe doit faire au moins 8 caractères.'); return
     }
     setSaving(true); setError('')
-    const sb = getSupabase()
-    const { error: e } = await sb.rpc('admin_set_password', {
-      p_user_id:    selUser.id,
-      p_new_password: newPwd,
-    })
+    try {
+      await appelAdmin(`/api/admin/utilisateurs/${selUser.id}`, 'PATCH', { password: newPwd })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Mot de passe non modifié')
+      setSaving(false); return
+    }
     setSaving(false)
-    if (e) { setError(e.message); return }
     closeModal()
     flash(`✅ Mot de passe de « ${selUser.nom} » modifié`)
   }
@@ -249,12 +250,11 @@ export default function ParametresClient({
     if (p.id === currentUserId) {
       setError('Vous ne pouvez pas désactiver votre propre compte.'); return
     }
-    const sb = getSupabase()
-    const { error: e } = await sb.rpc('admin_toggle_user', {
-      p_user_id: p.id,
-      p_actif:   !p.actif,
-    })
-    if (e) { setError(e.message); return }
+    try {
+      await appelAdmin(`/api/admin/utilisateurs/${p.id}`, 'PATCH', { actif: !p.actif })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Modification impossible'); return
+    }
     setProfiles(prev => prev.map(x => x.id === p.id ? { ...x, actif: !x.actif } : x))
     flash(`✅ « ${p.nom} » ${!p.actif ? 'activé' : 'désactivé'}`)
   }
@@ -263,11 +263,12 @@ export default function ParametresClient({
   const savePermissions = async () => {
     if (!selUser) return
     setSaving(true); setError('')
-    const sb = getSupabase()
-    const { error: e } = await sb.from('profiles')
-      .update({ permissions: permEdit })
-      .eq('id', selUser.id)
-    if (e) { setError(e.message); setSaving(false); return }
+    try {
+      await appelAdmin(`/api/admin/utilisateurs/${selUser.id}`, 'PATCH', { permissions: permEdit })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Modification impossible')
+      setSaving(false); return
+    }
     setProfiles(prev => prev.map(p =>
       p.id === selUser.id ? { ...p, permissions: permEdit } : p
     ))
@@ -432,7 +433,7 @@ export default function ParametresClient({
                 style={{ ...inputStyle, paddingRight: 40 }}
                 value={fne.api_key}
                 onChange={e => setFne(p => ({ ...p, api_key: e.target.value }))}
-                placeholder="Obtenir sur services.fne.dgi.gouv.ci"
+                placeholder={cleFneEnregistree ? 'Clé enregistrée — saisir une nouvelle valeur pour la remplacer' : 'Obtenir sur services.fne.dgi.gouv.ci'}
               />
               <button onClick={() => setShowPwd(!showPwd)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#7A736C', display: 'flex' }}>
                 {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}

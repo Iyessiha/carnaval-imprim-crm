@@ -85,8 +85,8 @@ CREATE TRIGGER trg_bons_travail_updated_at
   BEFORE UPDATE ON bons_travail
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- Compteur numérotation BT
-INSERT INTO compteurs_numero (type, annee, dernier_numero) VALUES ('BT', EXTRACT(YEAR FROM now())::int, 0) ON CONFLICT DO NOTHING;
+-- Le compteur de numérotation BT est créé à la demande par next_numero() (voir 00003) :
+-- aucune ligne d'initialisation n'est nécessaire ici.
 
 -- ── 3. ÉTAPES DE FABRICATION ────────────────────────────────
 CREATE TABLE etapes_fabrication (

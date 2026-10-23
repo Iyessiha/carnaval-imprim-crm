@@ -1,12 +1,15 @@
 export const dynamic = 'force-dynamic'
 import { createClient } from '@/lib/supabase/server'
-import { formatFCFA, calculerTotaux, formatDateFR } from '@/lib/utils'
+import { formatFCFA, calculerTotaux, formatDateFR, signeDocument, today } from '@/lib/utils'
 import Link from 'next/link'
 import { montantMensuel } from '@/lib/charges'
 
 export const metadata = { title: 'Tableau de bord — Carnaval Imprim' }
 
 export default async function DashboardPage() {
+  // Premier jour du mois en heure locale (et non via toISOString, décalé selon le fuseau)
+  const maintenant = new Date()
+  const debutMoisCourant = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-01`
   const supabase = await createClient()
 
   const [
@@ -17,12 +20,12 @@ export default async function DashboardPage() {
     { data: entData },
     { data: caisse },
   ] = await Promise.all([
-    supabase.from('factures').select('id, tva_applicable, remise, date, echeance, factures_lignes(qte,pu), paiements(montant)'),
+    supabase.from('factures').select('id, tva_applicable, remise, date, echeance, is_avoir, factures_lignes(qte,pu), paiements(montant)'),
     supabase.from('devis').select('id, statut, date'),
     supabase.from('productions').select('id, statut, caracteristique, format, quantite, date_livraison_prevue, clients(nom)'),
     supabase.from('clients').select('id, created_at'),
     supabase.from('entreprise').select('nom, taux_tva').single(),
-    supabase.from('caisse_operations').select('type, montant, date').gte('date', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0,10)),
+    supabase.from('caisse_operations').select('type, montant, date').gte('date', debutMoisCourant),
   ])
 
   // Charges fixes — query séparée avec fallback silencieux
@@ -37,14 +40,16 @@ export default async function DashboardPage() {
 
   // KPIs financiers
   let caTotal = 0, caEncaisse = 0, impayes = 0
-  const now = new Date().toISOString().slice(0,10)
+  const now = today()
   for (const f of (factures || [])) {
     const lignes = (f as { factures_lignes?: {qte:number;pu:number}[] }).factures_lignes || []
     const remise = (f as {remise:number}).remise || 0
     const tvaApp = (f as {tva_applicable:boolean}).tva_applicable
     const { ttc } = calculerTotaux(lignes, remise, tva, tvaApp)
     const paye = ((f as {paiements?:{montant:number}[]}).paiements || []).reduce((s,p) => s + p.montant, 0)
-    caTotal += ttc
+    // Un avoir réduit le chiffre d'affaires et n'est jamais une créance à encaisser.
+    caTotal += signeDocument(f as { is_avoir?: boolean }) * ttc
+    if ((f as { is_avoir?: boolean }).is_avoir) continue
     caEncaisse += paye
     if (paye < ttc) impayes += (ttc - paye)
   }

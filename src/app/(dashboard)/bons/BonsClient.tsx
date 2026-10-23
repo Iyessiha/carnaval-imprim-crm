@@ -9,6 +9,7 @@ import PageHeader from '@/components/ui/PageHeader'
 import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
 import { Check, Pencil, Trash2, Eye, Plus, X, Printer } from 'lucide-react'
+import { messageSuppression, ligneSupprimee } from '@/lib/suppression'
 
 const STATUTS = ['En cours', 'Reçu', 'Annulé'] as const
 
@@ -85,10 +86,12 @@ export default function BonsClient({ bons: initial, fournisseurs, tauxTva = 18 }
   }
 
   const del = async (b: Bon) => {
+    if (b.statut === 'Reçu') { alert('Bon reçu : suppression interdite (pièce d\'achat). Passez-le en « Annulé » si besoin.'); return }
     if (!confirm(`Supprimer ${b.numero} ?`)) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('bons_commande_fournisseurs').delete().eq('id', b.id)
+    const { data: supprime, error: e } = await sb.from('bons_commande_fournisseurs').delete().eq('id', b.id).select('id')
     if (e) { alert('Suppression impossible : ' + e.message); return }
+    if (!ligneSupprimee(supprime)) { alert('Suppression refusée : votre compte ne peut pas supprimer ce bon.'); return }
     setBons(prev => prev.filter(x => x.id !== b.id)); router.refresh()
   }
 

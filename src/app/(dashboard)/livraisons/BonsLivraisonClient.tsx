@@ -25,7 +25,6 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
 }) {
   const [q, setQ] = useState('')
   const [filtre, setFiltre] = useState('Tous')
-  const [numBL, setNumBL] = useState<Record<string,string>>({})
   const [saving, setSaving] = useState<string|null>(null)
   const [facturing, setFacturing] = useState<string|null>(null)
   const [liees, setLiees] = useState<Record<string,string>>({}) // production.id -> numéro de facture
@@ -36,71 +35,49 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
     .filter(p => (p.caracteristique+(p.clients?.nom||'')+(p.numero_bl||'')).toLowerCase().includes(q.toLowerCase())),
     [productions, q, filtre])
 
+  // Numéro de BL : série continue attribuée par la base. Un BL déjà numéroté n'est jamais renuméroté.
   const marquerLivre = async (p: Production) => {
-    const num = numBL[p.id] || `BL-${new Date().getFullYear()}-${Date.now().toString().slice(-4)}`
+    if (p.numero_bl) { imprimerBL(p, p.numero_bl); return }
     setSaving(p.id)
     const sb = getSupabase()
-    const { error: e } = await sb.from('productions').update({ numero_bl: num, statut: 'Livré', date_livraison_reelle: today() }).eq('id', p.id)
+    const { data: num, error: eN } = await sb.rpc('next_numero', { p_type: 'BL', p_annee: new Date().getFullYear() })
+    if (eN || !num) { setSaving(null); alert('Numéro de BL impossible à générer : ' + (eN?.message || 'réponse vide')); return }
+    const numero = String(num)
+    const { data: maj, error: e } = await sb.from('productions')
+      .update({ numero_bl: numero, statut: 'Livré', date_livraison_reelle: today() })
+      .eq('id', p.id).is('numero_bl', null).select('id')
     setSaving(null)
     if (e) { alert('Livraison non enregistrée, bon non généré : ' + e.message); return }
+    if (!maj?.length) { alert('Ce bon de livraison a déjà été émis : rechargez la page.'); return }
     router.refresh()
-    imprimerBL(p, num)
+    imprimerBL(p, numero)
   }
 
 
-  // Génère la facture à partir du bon de livraison (copie du devis lié), comme l'ordre de prod. depuis le devis
+  // Facture à partir du devis lié. La base crée la facture et ses lignes dans une seule transaction
+  // et renvoie la facture existante si le devis a déjà été facturé : jamais de doublon.
   const facturer = async (p: Production) => {
     if (!p.devis_id) {
       alert("Cet ordre n'est lié à aucun devis : impossible de reprendre les prix automatiquement.\nCréez la facture depuis la page Factures, ou liez d'abord un devis à l'ordre de production.")
       return
     }
-    setFacturing(p.id)
     const sb = getSupabase()
+    const { data: existante } = await sb.from('factures').select('id, numero').eq('devis_id', p.devis_id).eq('is_avoir', false).limit(1).maybeSingle()
+    if (!existante && !confirm(`Créer la facture de « ${p.clients?.nom||'—'} » à partir du devis ${p.devis?.numero||''} ?`)) return
+
+    setFacturing(p.id)
     try {
-      // 1) Une facture existe-t-elle déjà pour ce devis ? Alors on la lie au lieu d'en créer une seconde.
-      const { data: existante } = await sb.from('factures').select('id, numero').eq('devis_id', p.devis_id).eq('is_avoir', false).limit(1).maybeSingle()
-      if (existante) {
-        const { error: eL } = await sb.from('productions').update({ facture_id: existante.id }).eq('id', p.id)
-        if (eL) { alert(eL.message); return }
-        setLiees(prev => ({ ...prev, [p.id]: existante.numero }))
-        alert(`Une facture existe déjà pour ce devis : ${existante.numero}.\nLe bon de livraison y a été rattaché (pas de doublon).`)
-        router.refresh(); return
-      }
-      if (!confirm(`Créer la facture de « ${p.clients?.nom||'—'} » à partir du devis ${p.devis?.numero||''} ?`)) return
+      const { data: facture, error: e } = await sb.rpc('creer_facture_depuis_devis', { p_devis_id: p.devis_id }).single()
+      if (e || !facture) { alert('Facture impossible : ' + (e?.message || 'réponse vide')); return }
+      const fac = facture as { id: string; numero: string }
 
-      // 2) Lire le devis et ses lignes
-      const { data: d, error: eD } = await sb.from('devis').select('*, devis_lignes(*)').eq('id', p.devis_id).single()
-      if (eD || !d) { alert('Devis introuvable : ' + (eD?.message||'')); return }
-      const lignes = ((d.devis_lignes || []) as { designation: string; qte: number; pu: number; remise_ligne?: number; produit_id?: string|null; ordre?: number }[])
-        .filter(l => l.designation).sort((a, b) => (a.ordre||0) - (b.ordre||0))
-      if (lignes.length === 0) { alert('Le devis ne contient aucune ligne.'); return }
+      const { error: eL } = await sb.from('productions').update({ facture_id: fac.id }).eq('id', p.id)
+      if (eL) { alert('Facture ' + fac.numero + ' créée, mais non rattachée à ce bon : ' + eL.message); return }
 
-      // 3) Créer la facture
-      const { data: cli } = await sb.from('clients').select('template_fne_defaut').eq('id', d.client_id).maybeSingle()
-      const { data: num } = await sb.rpc('next_numero', { p_type: 'FA', p_annee: new Date().getFullYear() })
-      const { data: facture, error: eF } = await sb.from('factures').insert({
-        numero: num, client_id: d.client_id, devis_id: d.id, date: today(),
-        remise: d.remise, tva_applicable: d.tva_applicable,
-        notes: [d.notes, p.numero_bl ? `Bon de livraison ${p.numero_bl}` : ''].filter(Boolean).join(' — ') || null,
-        template_fne: cli?.template_fne_defaut || 'B2B', payment_method_fne: 'cash',
-      }).select().single()
-      if (eF || !facture) { alert(eF?.message || 'Création de la facture impossible'); return }
-
-      // 4) Copier les lignes (si échec : on annule la facture pour ne pas laisser une facture vide)
-      const { error: eLg } = await sb.from('factures_lignes').insert(lignes.map((l, i) => ({
-        facture_id: facture.id, designation: l.designation, qte: Number(l.qte)||0, pu: Number(l.pu)||0,
-        remise_ligne: Number(l.remise_ligne)||0, produit_id: l.produit_id || null, taxes: ['TVA'], ordre: i,
-      })))
-      if (eLg) {
-        await sb.from('factures').delete().eq('id', facture.id)
-        alert('Lignes non copiées, facture annulée : ' + eLg.message); return
-      }
-
-      // 5) Lier le bon de livraison à la facture et marquer le devis accepté
-      await sb.from('productions').update({ facture_id: facture.id }).eq('id', p.id)
-      await sb.from('devis').update({ statut: 'Accepté' }).eq('id', d.id)
-      setLiees(prev => ({ ...prev, [p.id]: facture.numero }))
-      alert(`✅ Facture ${facture.numero} créée à partir du bon de livraison.`)
+      setLiees(prev => ({ ...prev, [p.id]: fac.numero }))
+      alert(existante
+        ? `Une facture existe déjà pour ce devis : ${fac.numero}.\nLe bon de livraison y a été rattaché (pas de doublon).`
+        : `✅ Facture ${fac.numero} créée à partir du bon de livraison.`)
       router.refresh()
     } finally {
       setFacturing(null)
@@ -238,8 +215,7 @@ export default function BonsLivraisonClient({ productions, entreprise }: {
               <td style={td}>
                 {p.numero_bl
                   ? <span style={{ color:'#2D7A4E', fontWeight:700, fontSize:12 }}>{p.numero_bl}</span>
-                  : <input value={numBL[p.id]||''} onChange={e=>setNumBL(prev=>({...prev,[p.id]:e.target.value}))}
-                      placeholder="BL-2026-001" style={{ ...inputStyle, padding:'5px 8px', width:120, fontSize:11 }} />
+                  : <span style={{ color:'#7A736C', fontSize:11 }}>Attribué à la livraison</span>
                 }
               </td>
               <td style={td}>

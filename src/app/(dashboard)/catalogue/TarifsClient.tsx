@@ -7,6 +7,7 @@ import { TableWrap, th, td, EmptyRow } from '@/components/ui/Table'
 import { BtnPrimary, BtnGhost, BtnIcon, Field, inputStyle } from '@/components/ui/index'
 import Modal from '@/components/ui/Modal'
 import { Plus, Pencil, Trash2, ToggleLeft, ToggleRight } from 'lucide-react'
+import { messageSuppression, ligneSupprimee } from '@/lib/suppression'
 
 type Tarif = {
   id: string; categorie: string; designation: string
@@ -84,8 +85,9 @@ export default function TarifsClient({ tarifs: init }: { tarifs: Tarif[] }) {
   const del = async (t: Tarif) => {
     if (!confirm(`Supprimer « ${t.designation} » ?`)) return
     const sb = getSupabase()
-    const { error: e } = await sb.from('tarifs_impression').delete().eq('id', t.id)
-    if (e) { alert('Suppression impossible : ' + e.message); return }
+    const { data: supprime, error: e } = await sb.from('tarifs_impression').delete().eq('id', t.id).select('id')
+    if (e) { alert(messageSuppression(e, `« ${t.designation} »`)); return }
+    if (!ligneSupprimee(supprime)) { alert('Suppression refusée : votre compte ne peut pas supprimer ce tarif.'); return }
     setTarifs(prev => prev.filter(x => x.id !== t.id))
   }
 
