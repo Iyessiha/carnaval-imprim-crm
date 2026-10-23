@@ -32,9 +32,10 @@ type Fournisseur = { id: string; nom: string }
 type Ent = Record<string,string|number> | null
 
 // ── Constantes ───────────────────────────────────────────────────
+// Doit rester identique à la contrainte depenses_categorie_check de la base.
 const CATEGORIES_DEP = [
   'Matières premières','Sous-traitance','Loyer','Salaires','Transport',
-  'Électricité / Eau','Téléphone / Internet','Fournitures bureau',
+  'Électricité (CIE)','Eau (SODECI)','Téléphone / Internet','Fournitures bureau',
   'Maintenance matériel','Publicité','Taxes & impôts','Frais bancaires','Autre'
 ]
 const MODES = ['cash','mobile-money','wave','cheque','virement','carte']

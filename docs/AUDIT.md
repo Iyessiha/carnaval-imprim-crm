@@ -142,3 +142,38 @@ migrations sur PostgreSQL et vérifient chaque règle d'accès et garde-fou.
 5. Se connecter avec un compte administrateur : vérifier Paramètres → FNE (mode, clé) et la liste des utilisateurs.
 6. Tester une conversion devis → facture, une certification FNE en mode test, et une fermeture de caisse.
 7. Lancer `npm run test:db` et `npm run typecheck` sur le même commit.
+
+## 6. Mise à jour : application sur la base de production
+
+Le projet `carnaval-imprim-crm` (`lpgflgekyxluhyyjxmsj`) a été audité directement le 2026-10-23.
+Ses migrations (30, dont une partie absente du dépôt) diffèrent du dépôt : **la migration 00003 du dépôt
+ne doit pas être appliquée à la production**. Les correctifs réellement appliqués sont dans
+`supabase/migrations/00004_securite_base_de_production.sql`.
+
+Constats sur la base réelle, tous corrigés sauf mention contraire :
+
+- Politiques `{public}` sur `charges_fixes` et `tarifs_impression` : accessibles avec la clé anonyme. **Corrigé.**
+- `profiles_update` permettait à tout compte de modifier son propre rôle et son accès. **Corrigé** (trigger).
+- `fne_config` lisible par tout compte connecté (clé API). **Corrigé** : administrateurs seulement.
+- Lecture et écriture ouvertes à tout compte connecté, y compris désactivé. **Corrigé** : `est_actif()`.
+- Fonctions `admin_set_password`, `admin_toggle_user`, `create_user_with_profile` exécutables par `anon`. **Corrigé** (droits retirés ; l'application passe par l'API serveur).
+- Rôles obsolètes (`Commercial`, `Comptabilité`) dans des politiques. **Corrigé.**
+- Numéro de BL refusé par la contrainte `compteurs_numero` (type `BL` absent). **Corrigé.**
+- Conversion devis → facture absente de la base. **Ajoutée**, atomique et sans doublon.
+- Factures certifiées, caisse fermée : aucune garde en base. **Ajoutées.**
+- Catégories de dépenses de l'interface ne correspondaient pas à la contrainte. **Corrigé dans le code.**
+- `unaccent` déplacée hors de `public`. `search_path` figé sur les fonctions signalées.
+
+Restant, à votre décision :
+
+1. **Extensions `http` et `pg_net` dans `public`** : `http` ne peut pas être déplacée, `pg_net` est gérée par Supabase.
+   `http` n'est utilisée par aucun objet de l'application : la supprimer (`DROP EXTENSION http`) est recommandé
+   après vérification que personne ne s'en sert.
+2. **Protection des mots de passe compromis** : à activer dans Supabase → Authentication → Providers → Email
+   (« Leaked password protection »). Cela ne se règle pas par SQL.
+3. **Vérification faite** : 14 contrôles (accès, comptes désactivés, clé FNE, factures certifiées, conversion
+   idempotente, doublon BL) passés sur la base réelle, dans des transactions annulées : aucune donnée modifiée.
+4. **Clé `SUPABASE_SERVICE_ROLE_KEY`** : nécessaire dans Vercel pour la gestion des comptes et la certification FNE
+   (les routes API l'utilisent). Sans elle, ces deux fonctions renvoient une erreur explicite.
+5. **Numéros de BL** : les 14 bons déjà émis (`BL-2026-NNNN`, quatre chiffres non séquentiels) sont conservés.
+   La nouvelle série repart à `BL-2026-001`. À valider avec la comptabilité.
